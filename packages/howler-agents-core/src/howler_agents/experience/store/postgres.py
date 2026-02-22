@@ -18,6 +18,7 @@ class PostgresStore:
 
     async def _get_session(self) -> AsyncSession:
         from sqlalchemy.ext.asyncio import AsyncSession
+
         factory = self._session_factory
         if callable(factory):
             session = factory()
@@ -57,7 +58,9 @@ class PostgresStore:
 
         async with await self._get_session() as session:
             result = await session.execute(
-                text("SELECT * FROM evolutionary_traces WHERE agent_id = :agent_id ORDER BY recorded_at"),
+                text(
+                    "SELECT * FROM evolutionary_traces WHERE agent_id = :agent_id ORDER BY recorded_at"
+                ),
                 {"agent_id": agent_id},
             )
             return [self._row_to_trace(row) for row in result.mappings()]
@@ -67,7 +70,9 @@ class PostgresStore:
 
         async with await self._get_session() as session:
             result = await session.execute(
-                text("SELECT * FROM evolutionary_traces WHERE run_id = :run_id ORDER BY recorded_at DESC LIMIT :limit"),
+                text(
+                    "SELECT * FROM evolutionary_traces WHERE run_id = :run_id ORDER BY recorded_at DESC LIMIT :limit"
+                ),
                 {"run_id": run_id, "limit": limit},
             )
             return [self._row_to_trace(row) for row in result.mappings()]
@@ -77,7 +82,9 @@ class PostgresStore:
 
         async with await self._get_session() as session:
             result = await session.execute(
-                text("SELECT * FROM evolutionary_traces WHERE run_id = :run_id AND generation = :gen"),
+                text(
+                    "SELECT * FROM evolutionary_traces WHERE run_id = :run_id AND generation = :gen"
+                ),
                 {"run_id": run_id, "gen": generation},
             )
             return [self._row_to_trace(row) for row in result.mappings()]
@@ -96,6 +103,7 @@ class PostgresStore:
     @staticmethod
     def _row_to_trace(row: object) -> EvolutionaryTrace:
         from collections.abc import Mapping
+
         r = row if isinstance(row, Mapping) else row  # type: ignore[assignment]
         return EvolutionaryTrace(
             id=str(r["id"]),

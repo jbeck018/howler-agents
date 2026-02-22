@@ -26,7 +26,9 @@ class AgentsRepo:
 
     async def list_by_run(self, run_id: UUID) -> list[AgentModel]:
         result = await self._session.execute(
-            select(AgentModel).where(AgentModel.run_id == run_id).order_by(AgentModel.combined_score.desc())
+            select(AgentModel)
+            .where(AgentModel.run_id == run_id)
+            .order_by(AgentModel.combined_score.desc())
         )
         return list(result.scalars().all())
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import heapq
-from typing import Sequence
+from collections.abc import Sequence
 
 from howler_agents.agents.base import Agent
 
@@ -41,7 +41,7 @@ class AgentPool:
     def partition_groups(self, group_size: int) -> list[list[Agent]]:
         """Partition current population into groups of given size."""
         agents = list(self._agents.values())
-        return [agents[i:i + group_size] for i in range(0, len(agents), group_size)]
+        return [agents[i : i + group_size] for i in range(0, len(agents), group_size)]
 
     def replace_population(self, new_agents: Sequence[Agent]) -> None:
         """Replace the entire population."""

@@ -26,16 +26,31 @@ class ProbeRegistry:
     def register_default_probes(self, num_probes: int = 20) -> None:
         """Register a set of default probe tasks for general capability assessment."""
         default_probes = [
-            {"description": "Simple arithmetic: compute 2+2", "type": "arithmetic", "expected": "4"},
-            {"description": "String reversal: reverse 'hello'", "type": "string_ops", "expected": "olleh"},
+            {
+                "description": "Simple arithmetic: compute 2+2",
+                "type": "arithmetic",
+                "expected": "4",
+            },
+            {
+                "description": "String reversal: reverse 'hello'",
+                "type": "string_ops",
+                "expected": "olleh",
+            },
             {"description": "List sorting: sort [3,1,2]", "type": "sorting", "expected": "[1,2,3]"},
-            {"description": "JSON parsing: extract 'name' from {\"name\": \"test\"}", "type": "json", "expected": "test"},
+            {
+                "description": 'JSON parsing: extract \'name\' from {"name": "test"}',
+                "type": "json",
+                "expected": "test",
+            },
             {"description": "Error handling: handle division by zero", "type": "error_handling"},
             {"description": "Code generation: write a fibonacci function", "type": "code_gen"},
             {"description": "Debugging: find the bug in off-by-one loop", "type": "debugging"},
             {"description": "Refactoring: simplify nested conditionals", "type": "refactoring"},
             {"description": "Testing: write a unit test for add(a,b)", "type": "testing"},
-            {"description": "Documentation: write docstring for sort function", "type": "documentation"},
+            {
+                "description": "Documentation: write docstring for sort function",
+                "type": "documentation",
+            },
             {"description": "API design: design a REST endpoint for users", "type": "api_design"},
             {"description": "Data transformation: convert CSV to JSON", "type": "data_transform"},
             {"description": "Pattern matching: extract emails from text", "type": "regex"},

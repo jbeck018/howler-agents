@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import structlog
 from pathlib import Path
+
+import structlog
 
 log = structlog.get_logger(__name__)
 
@@ -48,10 +49,7 @@ def ensure_gitignore(howler_dir: Path) -> None:
     if gitignore_path.exists():
         existing_lines = gitignore_path.read_text(encoding="utf-8").splitlines()
 
-    missing = [
-        entry for entry in _GITIGNORE_ENTRIES
-        if entry not in existing_lines
-    ]
+    missing = [entry for entry in _GITIGNORE_ENTRIES if entry not in existing_lines]
     if not missing:
         return
 

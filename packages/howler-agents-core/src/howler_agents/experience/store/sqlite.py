@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
+
 import structlog
-from datetime import datetime, timezone
 
 from howler_agents.experience.trace import EvolutionaryTrace
 from howler_agents.persistence.db import DatabaseManager
@@ -48,7 +49,7 @@ def _parse_dt(value: str) -> datetime:
     """Parse an ISO datetime string, always returning a UTC-aware datetime."""
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -104,9 +105,7 @@ class SQLiteStore:
         rows = await self._db.execute(_SELECT_BY_RUN, (run_id, limit))
         return [_row_to_trace(r) for r in rows]
 
-    async def get_by_generation(
-        self, run_id: str, generation: int
-    ) -> list[EvolutionaryTrace]:
+    async def get_by_generation(self, run_id: str, generation: int) -> list[EvolutionaryTrace]:
         """Return all traces for a specific generation within a run."""
         rows = await self._db.execute(_SELECT_BY_GENERATION, (run_id, generation))
         return [_row_to_trace(r) for r in rows]

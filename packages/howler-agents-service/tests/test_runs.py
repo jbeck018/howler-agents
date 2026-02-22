@@ -4,13 +4,16 @@ import uuid
 
 
 def test_create_run(client):
-    response = client.post("/api/v1/runs", json={
-        "config": {
-            "population_size": 10,
-            "group_size": 3,
-            "num_iterations": 5,
-        }
-    })
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "config": {
+                "population_size": 10,
+                "group_size": 3,
+                "num_iterations": 5,
+            }
+        },
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "pending"

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from howler_agents_service.db.models import EvolutionRunModel
@@ -34,7 +34,9 @@ class RunsRepo:
     async def get(self, run_id: UUID) -> EvolutionRunModel | None:
         return await self._session.get(EvolutionRunModel, run_id)
 
-    async def list(self, limit: int = 20, offset: int = 0, status: str | None = None) -> tuple[list[EvolutionRunModel], int]:
+    async def list(
+        self, limit: int = 20, offset: int = 0, status: str | None = None
+    ) -> tuple[list[EvolutionRunModel], int]:
         query = select(EvolutionRunModel)
         count_query = select(func.count()).select_from(EvolutionRunModel)
         if status:
@@ -45,7 +47,9 @@ class RunsRepo:
         total_result = await self._session.execute(count_query)
         return list(result.scalars().all()), total_result.scalar_one()
 
-    async def update_status(self, run_id: UUID, status: str, **kwargs: Any) -> EvolutionRunModel | None:
+    async def update_status(
+        self, run_id: UUID, status: str, **kwargs: Any
+    ) -> EvolutionRunModel | None:
         run = await self.get(run_id)
         if run:
             run.status = status

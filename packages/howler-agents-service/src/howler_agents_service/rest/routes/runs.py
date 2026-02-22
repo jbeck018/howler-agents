@@ -10,9 +10,9 @@ from howler_agents_service.auth.deps import CurrentUserDep
 from howler_agents_service.db.deps import RunsRepoDep
 from howler_agents_service.rest.schemas import (
     CreateRunRequest,
+    RunConfigSchema,
     RunListResponse,
     RunSchema,
-    RunConfigSchema,
 )
 
 router = APIRouter()

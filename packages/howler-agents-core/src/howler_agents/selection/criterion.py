@@ -24,8 +24,7 @@ class PerformanceNoveltySelector:
         self._novelty.score(agents)
         for agent in agents:
             agent.combined_score = (
-                self.alpha * agent.performance_score
-                + (1 - self.alpha) * agent.novelty_score
+                self.alpha * agent.performance_score + (1 - self.alpha) * agent.novelty_score
             )
 
     def select(self, agents: list[Agent], num_survivors: int) -> list[Agent]:

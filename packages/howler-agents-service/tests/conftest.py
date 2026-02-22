@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.testclient import TestClient
 
 from howler_agents_service.auth.deps import get_current_user
 from howler_agents_service.auth.models import CurrentUser
-from howler_agents_service.rest.routes.health import router as health_router
-from howler_agents_service.rest.routes.runs import router as runs_router
+from howler_agents_service.db.deps import get_agents_repo, get_runs_repo, get_traces_repo
 from howler_agents_service.rest.routes.agents import router as agents_router
 from howler_agents_service.rest.routes.experience import router as experience_router
-from howler_agents_service.db.deps import get_runs_repo, get_agents_repo, get_traces_repo
+from howler_agents_service.rest.routes.health import router as health_router
+from howler_agents_service.rest.routes.runs import router as runs_router
 
 
 class InMemoryRunsRepo:
@@ -29,7 +29,7 @@ class InMemoryRunsRepo:
 
     async def create(self, config: dict, total_generations: int, org_id=None):
         run_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         run = MagicMock()
         run.id = run_id
         run.config = config
@@ -53,7 +53,7 @@ class InMemoryRunsRepo:
         if status:
             runs = [r for r in runs if r.status == status]
         total = len(runs)
-        return runs[offset:offset + limit], total
+        return runs[offset : offset + limit], total
 
     async def update_status(self, run_id, status, **kwargs):
         run = self._runs.get(str(run_id))
@@ -61,7 +61,7 @@ class InMemoryRunsRepo:
             run.status = status
             for k, v in kwargs.items():
                 setattr(run, k, v)
-            run.updated_at = datetime.now(timezone.utc)
+            run.updated_at = datetime.now(UTC)
         return run
 
 
@@ -84,7 +84,7 @@ class InMemoryAgentsRepo:
 
     async def get_best(self, run_id, top_k=5):
         agents = await self.list_by_run(run_id)
-        return sorted(agents, key=lambda a: getattr(a, 'combined_score', 0), reverse=True)[:top_k]
+        return sorted(agents, key=lambda a: getattr(a, "combined_score", 0), reverse=True)[:top_k]
 
 
 class InMemoryTracesRepo:

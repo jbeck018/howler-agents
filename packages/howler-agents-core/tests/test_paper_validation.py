@@ -10,7 +10,6 @@ Run with:
 
 from __future__ import annotations
 
-import asyncio
 import random
 import time
 import uuid
@@ -150,7 +149,9 @@ async def run_evolution_trial(
 
     store = InMemoryStore()
     experience_pool = SharedExperiencePool(store)
-    selector = PerformanceNoveltySelector(alpha=alpha, k_neighbors=min(3, config.population_size - 1))
+    selector = PerformanceNoveltySelector(
+        alpha=alpha, k_neighbors=min(3, config.population_size - 1)
+    )
 
     registry = ProbeRegistry()
     registry.register_default_probes(num_probes=config.num_probes)
@@ -198,7 +199,7 @@ async def run_evolution_trial(
 
         # --- collect metrics: raw performance (pre-normalisation) is meaningful
         #     across different alpha values; combined_score is not.
-        survivor_raw = [raw_scores[a.id] for a in survivors]
+        _survivor_raw = [raw_scores[a.id] for a in survivors]
         all_raw = list(raw_scores.values())
         metrics.best_raw_performance.append(max(all_raw))
         metrics.mean_raw_performance.append(sum(all_raw) / len(all_raw))
@@ -263,12 +264,20 @@ async def test_gea_outperforms_individual_selection():
     config = HowlerConfig(population_size=8, group_size=4, num_iterations=5, num_probes=8)
 
     gea_metrics = await run_evolution_trial(
-        config=config, num_generations=5, initial_skill=0.3,
-        with_experience=True, alpha=0.5, seed=1,
+        config=config,
+        num_generations=5,
+        initial_skill=0.3,
+        with_experience=True,
+        alpha=0.5,
+        seed=1,
     )
     individual_metrics = await run_evolution_trial(
-        config=config, num_generations=5, initial_skill=0.3,
-        with_experience=False, alpha=1.0, seed=1,
+        config=config,
+        num_generations=5,
+        initial_skill=0.3,
+        with_experience=False,
+        alpha=1.0,
+        seed=1,
     )
 
     # Use cumulative raw task performance to compare: GEA should find high-
@@ -300,12 +309,20 @@ async def test_experience_sharing_improves_convergence():
     config = HowlerConfig(population_size=8, group_size=4, num_iterations=6, num_probes=8)
 
     with_sharing = await run_evolution_trial(
-        config=config, num_generations=6, initial_skill=0.3,
-        with_experience=True, alpha=0.5, seed=7,
+        config=config,
+        num_generations=6,
+        initial_skill=0.3,
+        with_experience=True,
+        alpha=0.5,
+        seed=7,
     )
     without_sharing = await run_evolution_trial(
-        config=config, num_generations=6, initial_skill=0.3,
-        with_experience=False, alpha=0.5, seed=7,
+        config=config,
+        num_generations=6,
+        initial_skill=0.3,
+        with_experience=False,
+        alpha=0.5,
+        seed=7,
     )
 
     # The trial-with-sharing should accumulate a higher cumulative best score
@@ -336,12 +353,20 @@ async def test_novelty_prevents_premature_convergence():
     config = HowlerConfig(population_size=10, group_size=5, num_iterations=5, num_probes=10)
 
     pure_perf = await run_evolution_trial(
-        config=config, num_generations=5, initial_skill=0.4,
-        with_experience=False, alpha=1.0, seed=42,
+        config=config,
+        num_generations=5,
+        initial_skill=0.4,
+        with_experience=False,
+        alpha=1.0,
+        seed=42,
     )
     balanced = await run_evolution_trial(
-        config=config, num_generations=5, initial_skill=0.4,
-        with_experience=False, alpha=0.5, seed=42,
+        config=config,
+        num_generations=5,
+        initial_skill=0.4,
+        with_experience=False,
+        alpha=0.5,
+        seed=42,
     )
 
     # Compare diversity across all measured generations (ignore gen-0 which is
@@ -396,7 +421,9 @@ async def test_group_selection_vs_individual_selection():
             new_pop: list[Agent] = list(best_group)
             while len(new_pop) < num_agents:
                 parent = best_group[len(new_pop) % len(best_group)]
-                patch = FrameworkPatch(agent_id=parent.id, generation=0, intent="improve", category="general")
+                patch = FrameworkPatch(
+                    agent_id=parent.id, generation=0, intent="improve", category="general"
+                )
                 await parent.apply_patch(patch)
                 new_pop.append(parent)
             pool.replace_population(new_pop)
@@ -418,12 +445,16 @@ async def test_group_selection_vs_individual_selection():
                 agent.capability_vector = [result.score, 1.0 - result.score]
 
             # Select top 3 individuals (ignoring group membership)
-            survivors = sorted(pool.agents, key=lambda a: a.performance_score, reverse=True)[:group_size]
+            survivors = sorted(pool.agents, key=lambda a: a.performance_score, reverse=True)[
+                :group_size
+            ]
 
             new_pop: list[Agent] = list(survivors)
             while len(new_pop) < num_agents:
                 parent = survivors[len(new_pop) % len(survivors)]
-                patch = FrameworkPatch(agent_id=parent.id, generation=0, intent="improve", category="general")
+                patch = FrameworkPatch(
+                    agent_id=parent.id, generation=0, intent="improve", category="general"
+                )
                 await parent.apply_patch(patch)
                 new_pop.append(parent)
             pool.replace_population(new_pop)
@@ -513,14 +544,13 @@ class TestKNNNoveltyProperties:
         # Stage 2: partially converged — everyone shifted toward [1,0,0,...] but some remain
         # Each row: element 0 gets a boost toward 0.5+, other elements are halved.
         partial = [
-            [0.5 + 0.5 * float(j == 0) + 0.5 * float(j == i) for j in range(n)]
-            for i in range(n)
+            [0.5 + 0.5 * float(j == 0) + 0.5 * float(j == i) for j in range(n)] for i in range(n)
         ]
         # Stage 3: identical — full convergence
         converged = [[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]] * n
 
         nov_diverse = mean_novelty(diverse)
-        nov_partial = mean_novelty(partial)
+        _nov_partial = mean_novelty(partial)
         nov_converged = mean_novelty(converged)
 
         # Fully converged novelty (all 1.0 by the normalisation rule) may equal
@@ -632,8 +662,8 @@ async def test_probe_characterization_captures_specialization():
     def hamming(v1: list[float], v2: list[float]) -> int:
         return sum(int(x != y) for x, y in zip(v1, v2))
 
-    dist_ab = hamming(vec_a, vec_b)   # very different specialisations
-    dist_ac = hamming(vec_a, vec_c)   # similar specialisations
+    dist_ab = hamming(vec_a, vec_b)  # very different specialisations
+    dist_ac = hamming(vec_a, vec_c)  # similar specialisations
 
     # Vectors should not all be identical — agents have distinct capabilities
     assert vec_a != vec_b or vec_a != vec_c, (
@@ -689,7 +719,10 @@ def test_combined_score_pareto_optimality():
             if (
                 other.performance_score >= a.performance_score
                 and other.novelty_score >= a.novelty_score
-                and (other.performance_score > a.performance_score or other.novelty_score > a.novelty_score)
+                and (
+                    other.performance_score > a.performance_score
+                    or other.novelty_score > a.novelty_score
+                )
             ):
                 return True
         return False
@@ -717,10 +750,31 @@ def test_combined_score_pareto_optimality():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("benchmark,params", [
-    ("swe_bench", {"population_size": 50, "group_size": 5, "alpha": 0.7, "num_iterations": 30, "num_probes": 30}),
-    ("polyglot",  {"population_size": 50, "group_size": 5, "alpha": 0.6, "num_iterations": 20, "num_probes": 25}),
-])
+@pytest.mark.parametrize(
+    "benchmark,params",
+    [
+        (
+            "swe_bench",
+            {
+                "population_size": 50,
+                "group_size": 5,
+                "alpha": 0.7,
+                "num_iterations": 30,
+                "num_probes": 30,
+            },
+        ),
+        (
+            "polyglot",
+            {
+                "population_size": 50,
+                "group_size": 5,
+                "alpha": 0.6,
+                "num_iterations": 20,
+                "num_probes": 25,
+            },
+        ),
+    ],
+)
 async def test_paper_hyperparameters_produce_improvement(benchmark: str, params: dict):
     """Running with the paper's benchmark hyperparameters must raise the best
     raw task performance by at least 20% from the first generation to the last.
@@ -861,7 +915,9 @@ async def test_lineage_depth_correlates_with_performance():
         max_depth = max(depths)
         min_depth = min(depths)
         deep_scores = [ta.agent.performance_score for ta in pool if ta.lineage_depth == max_depth]
-        shallow_scores = [ta.agent.performance_score for ta in pool if ta.lineage_depth == min_depth]
+        shallow_scores = [
+            ta.agent.performance_score for ta in pool if ta.lineage_depth == min_depth
+        ]
         assert max(deep_scores) >= min(shallow_scores), (
             "Deep-lineage agents must not be universally worse than shallow agents."
         )
@@ -879,20 +935,23 @@ async def test_experience_pool_scales_sublinearly():
     Paper architecture note: GEA processes thousands of traces per generation;
     the aggregation must remain tractable as the pool grows.
     """
+
     async def time_aggregation(num_traces: int) -> float:
         store = InMemoryStore()
         pool = SharedExperiencePool(store)
 
         for i in range(num_traces):
-            await pool.submit(EvolutionaryTrace(
-                agent_id=f"agent-{i % 10}",
-                run_id="scale-run",
-                generation=i // 10,
-                task_description=f"task {i}",
-                outcome="success",
-                score=0.5,
-                lessons_learned=[f"lesson {i}"],
-            ))
+            await pool.submit(
+                EvolutionaryTrace(
+                    agent_id=f"agent-{i % 10}",
+                    run_id="scale-run",
+                    generation=i // 10,
+                    task_description=f"task {i}",
+                    outcome="success",
+                    score=0.5,
+                    lessons_learned=[f"lesson {i}"],
+                )
+            )
 
         start = time.perf_counter()
         await pool.get_group_context("scale-run", "group-0", generation=999, max_traces=50)
@@ -911,6 +970,6 @@ async def test_experience_pool_scales_sublinearly():
         scale_factor = sizes[i] / sizes[i - 1]
         assert ratio < scale_factor, (
             f"Aggregation time scaled by {ratio:.1f}x when data grew {scale_factor:.0f}x "
-            f"(sizes {sizes[i-1]} -> {sizes[i]}). "
+            f"(sizes {sizes[i - 1]} -> {sizes[i]}). "
             "Must be sub-linear (O(n) or better) to handle production trace volumes."
         )

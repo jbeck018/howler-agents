@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any
 
 import structlog
 
@@ -127,9 +126,7 @@ class GroupReproducer:
         except (json.JSONDecodeError, TypeError):
             return EvolutionDirective(intent="general improvement", strategy="incremental")
 
-    async def _generate_patch(
-        self, parent: Agent, directive: EvolutionDirective
-    ) -> FrameworkPatch:
+    async def _generate_patch(self, parent: Agent, directive: EvolutionDirective) -> FrameworkPatch:
         prompt = PATCH_PROMPT.format(
             intent=directive.intent,
             target_areas=", ".join(directive.target_areas),

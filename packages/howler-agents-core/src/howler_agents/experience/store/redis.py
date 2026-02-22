@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timezone
+from datetime import UTC
 from typing import Any
 
 from howler_agents.experience.trace import EvolutionaryTrace
@@ -20,23 +20,26 @@ class RedisStore:
         return ":".join([self._prefix, *parts])
 
     def _serialize(self, trace: EvolutionaryTrace) -> str:
-        return json.dumps({
-            "id": trace.id,
-            "agent_id": trace.agent_id,
-            "run_id": trace.run_id,
-            "generation": trace.generation,
-            "task_description": trace.task_description,
-            "outcome": trace.outcome,
-            "score": trace.score,
-            "key_decisions": trace.key_decisions,
-            "lessons_learned": trace.lessons_learned,
-            "recorded_at": trace.recorded_at.isoformat(),
-        })
+        return json.dumps(
+            {
+                "id": trace.id,
+                "agent_id": trace.agent_id,
+                "run_id": trace.run_id,
+                "generation": trace.generation,
+                "task_description": trace.task_description,
+                "outcome": trace.outcome,
+                "score": trace.score,
+                "key_decisions": trace.key_decisions,
+                "lessons_learned": trace.lessons_learned,
+                "recorded_at": trace.recorded_at.isoformat(),
+            }
+        )
 
     def _deserialize(self, data: str) -> EvolutionaryTrace:
         from datetime import datetime
+
         d = json.loads(data)
-        d["recorded_at"] = datetime.fromisoformat(d["recorded_at"]).replace(tzinfo=timezone.utc)
+        d["recorded_at"] = datetime.fromisoformat(d["recorded_at"]).replace(tzinfo=UTC)
         return EvolutionaryTrace(**d)
 
     async def save(self, trace: EvolutionaryTrace) -> None:

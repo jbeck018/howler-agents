@@ -22,10 +22,7 @@ class InMemoryStore:
         return sorted(traces, key=lambda t: t.recorded_at, reverse=True)[:limit]
 
     async def get_by_generation(self, run_id: str, generation: int) -> list[EvolutionaryTrace]:
-        return [
-            t for t in self._traces
-            if t.run_id == run_id and t.generation == generation
-        ]
+        return [t for t in self._traces if t.run_id == run_id and t.generation == generation]
 
     async def delete_by_run(self, run_id: str) -> int:
         before = len(self._traces)

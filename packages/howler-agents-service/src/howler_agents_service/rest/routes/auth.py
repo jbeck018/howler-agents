@@ -8,7 +8,7 @@ from uuid import UUID
 
 import jwt
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, field_validator
 
 from howler_agents_service.auth.deps import CurrentUserDep
 from howler_agents_service.auth.jwt import (
@@ -90,7 +90,9 @@ class MeResponse(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-async def register(request: RegisterRequest, repo: AuthRepoDep, session: SessionDep) -> TokenResponse:
+async def register(
+    request: RegisterRequest, repo: AuthRepoDep, session: SessionDep
+) -> TokenResponse:
     """Create a new user and organization, returning JWT tokens."""
     # Check for existing email
     existing = await repo.get_user_by_email(request.email)
@@ -111,9 +113,7 @@ async def register(request: RegisterRequest, repo: AuthRepoDep, session: Session
     await repo.add_member(org_id=org.id, user_id=user.id, role="owner")
     await session.commit()
 
-    access = create_access_token(
-        user_id=user.id, org_id=org.id, email=user.email, role="owner"
-    )
+    access = create_access_token(user_id=user.id, org_id=org.id, email=user.email, role="owner")
     refresh = create_refresh_token(user_id=user.id, org_id=org.id)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
@@ -152,11 +152,11 @@ async def refresh_token(request: RefreshRequest, repo: AuthRepoDep) -> TokenResp
 
     try:
         user_id = UUID(payload["sub"])
-        org_id = UUID(payload["org"])
+        _org_id = UUID(payload["org"])
     except (KeyError, ValueError):
         raise HTTPException(status_code=401, detail="Malformed token payload")
 
-    user = await repo.get_user_by_email("")  # we need user by id — fetch via member
+    _user = await repo.get_user_by_email("")  # we need user by id — fetch via member
     # fetch member to get current role
     member = await repo.get_member_by_user(user_id)
     if not member:
@@ -164,10 +164,10 @@ async def refresh_token(request: RefreshRequest, repo: AuthRepoDep) -> TokenResp
 
     # We need the user's email — get it through a direct lookup
     from sqlalchemy import select
+
     from howler_agents_service.db.models import UserModel
-    result = await repo._session.execute(
-        select(UserModel).where(UserModel.id == user_id)
-    )
+
+    result = await repo._session.execute(select(UserModel).where(UserModel.id == user_id))
     db_user = result.scalars().first()
     if not db_user:
         raise HTTPException(status_code=401, detail="User not found")

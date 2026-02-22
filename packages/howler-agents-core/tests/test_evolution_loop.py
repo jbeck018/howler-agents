@@ -1,22 +1,21 @@
 """Tests for the evolution loop."""
 
-import uuid
 from unittest.mock import AsyncMock
 
 import pytest
+from _helpers import make_agent
 
+from howler_agents.agents.base import FrameworkPatch
 from howler_agents.agents.pool import AgentPool
 from howler_agents.config import HowlerConfig
+from howler_agents.evolution.directive import EvolutionDirective
 from howler_agents.evolution.loop import EvolutionLoop
 from howler_agents.evolution.reproducer import GroupReproducer
 from howler_agents.experience.pool import SharedExperiencePool
 from howler_agents.experience.store.memory import InMemoryStore
-from howler_agents.agents.base import FrameworkPatch
-from howler_agents.evolution.directive import EvolutionDirective
 from howler_agents.probes.evaluator import ProbeEvaluator
 from howler_agents.probes.registry import ProbeRegistry
 from howler_agents.selection.criterion import PerformanceNoveltySelector
-from _helpers import make_agent
 
 
 @pytest.fixture
@@ -35,10 +34,12 @@ def evolution_loop() -> EvolutionLoop:
     probe_eval = ProbeEvaluator(registry)
 
     reproducer = AsyncMock(spec=GroupReproducer)
-    reproducer.reproduce = AsyncMock(return_value=(
-        FrameworkPatch(intent="test patch"),
-        EvolutionDirective(intent="test"),
-    ))
+    reproducer.reproduce = AsyncMock(
+        return_value=(
+            FrameworkPatch(intent="test patch"),
+            EvolutionDirective(intent="test"),
+        )
+    )
 
     return EvolutionLoop(
         config=config,

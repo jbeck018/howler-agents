@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import hashlib
 import secrets
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from howler_agents_service.auth.passwords import hash_password
-from howler_agents_service.db.models import ApiKeyModel, OrgMemberModel, OrganizationModel, UserModel
+from howler_agents_service.db.models import (
+    ApiKeyModel,
+    OrganizationModel,
+    OrgMemberModel,
+    UserModel,
+)
 
 
 class AuthRepo:
@@ -33,7 +36,9 @@ class AuthRepo:
         )
         return result.scalars().first()
 
-    async def create_user(self, email: str, password: str, display_name: str | None = None) -> UserModel:
+    async def create_user(
+        self, email: str, password: str, display_name: str | None = None
+    ) -> UserModel:
         """Create a new user with a bcrypt-hashed password."""
         user = UserModel(
             email=email,
@@ -46,9 +51,7 @@ class AuthRepo:
         return user
 
     async def get_user_by_email(self, email: str) -> UserModel | None:
-        result = await self._session.execute(
-            select(UserModel).where(UserModel.email == email)
-        )
+        result = await self._session.execute(select(UserModel).where(UserModel.email == email))
         return result.scalars().first()
 
     async def add_member(self, org_id: UUID, user_id: UUID, role: str = "member") -> OrgMemberModel:

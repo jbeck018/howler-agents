@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -24,6 +24,8 @@ from howler_agents.experience.pool import SharedExperiencePool
 from howler_agents.experience.store.memory import InMemoryStore
 from howler_agents.experience.trace import EvolutionaryTrace
 from howler_agents.llm.router import LLMRouter
+from howler_agents.orchestration.detector import detect_orchestrator
+from howler_agents.orchestration.interface import Orchestrator
 from howler_agents.probes.evaluator import ProbeEvaluator
 from howler_agents.probes.registry import ProbeRegistry
 from howler_agents.selection.criterion import PerformanceNoveltySelector
@@ -133,7 +135,7 @@ class RunRecord:
     best_score: float = 0.0
     best_agent_id: str | None = None
     generation_summaries: list[dict[str, Any]] = field(default_factory=list)
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
     error: str | None = None
 
@@ -160,6 +162,7 @@ class LocalRunner:
         self._session_config: dict[str, Any] = {}
         self._db: Any | None = db  # DatabaseManager | None
         self._store: Any | None = None  # SQLiteStore | InMemoryStore | None
+        self._orchestrator: Orchestrator | None = None
 
     # ------------------------------------------------------------------ #
     # Lifecycle                                                            #
@@ -170,21 +173,41 @@ class LocalRunner:
         if self._db is not None:
             await self._db.initialize()
             from howler_agents.experience.store.sqlite import SQLiteStore
+
             self._store = SQLiteStore(self._db)
             await self._hydrate_from_db()
+
+        try:
+            default_config = HowlerConfig()
+            self._orchestrator = detect_orchestrator(
+                default_config, preferred=default_config.orchestrator
+            )
+            await self._orchestrator.initialize()
+        except Exception as exc:
+            logger.warning("orchestrator_init_failed", error=str(exc))
+            self._orchestrator = None
 
     async def close(self) -> None:
         """Close the database connection."""
         if self._db is not None:
             await self._db.close()
+        if self._orchestrator is not None:
+            try:
+                await self._orchestrator.shutdown()
+            except Exception:
+                pass
+
+    def get_orchestrator_info(self) -> dict[str, Any]:
+        """Return info about the active orchestrator."""
+        if self._orchestrator is None:
+            return {"backend": "none", "status": "not_initialized"}
+        return {"backend": self._orchestrator.name, "status": "active"}
 
     async def _hydrate_from_db(self) -> None:
         """Load completed/failed runs from SQLite so they appear in list_runs()."""
         if self._db is None:
             return
-        rows = await self._db.execute(
-            "SELECT * FROM runs ORDER BY started_at DESC LIMIT 50"
-        )
+        rows = await self._db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50")
         for row in rows:
             if row["run_id"] not in self._runs:
                 config = self._build_config(
@@ -205,9 +228,7 @@ class LocalRunner:
                     generation_summaries=json.loads(row["generation_summaries"]),
                     started_at=datetime.fromisoformat(row["started_at"]),
                     finished_at=(
-                        datetime.fromisoformat(row["finished_at"])
-                        if row["finished_at"]
-                        else None
+                        datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None
                     ),
                     error=row.get("error"),
                 )
@@ -284,26 +305,56 @@ class LocalRunner:
         domain = config.task_domain.lower()
         domain_tasks: dict[str, list[dict[str, Any]]] = {
             "coding": [
-                {"description": "Write a Python function to compute the factorial of n.", "type": "code_gen"},
-                {"description": "Debug this code: for i in range(10): print(i", "type": "debugging"},
-                {"description": "Refactor: replace nested if/else with a dict dispatch table.", "type": "refactoring"},
+                {
+                    "description": "Write a Python function to compute the factorial of n.",
+                    "type": "code_gen",
+                },
+                {
+                    "description": "Debug this code: for i in range(10): print(i",
+                    "type": "debugging",
+                },
+                {
+                    "description": "Refactor: replace nested if/else with a dict dispatch table.",
+                    "type": "refactoring",
+                },
             ],
             "math": [
-                {"description": "Compute the derivative of f(x) = x^3 + 2x^2 - 5.", "type": "calculus"},
+                {
+                    "description": "Compute the derivative of f(x) = x^3 + 2x^2 - 5.",
+                    "type": "calculus",
+                },
                 {"description": "Solve: 3x + 7 = 22", "type": "algebra"},
                 {"description": "Find the area of a circle with radius 5.", "type": "geometry"},
             ],
             "writing": [
-                {"description": "Write a persuasive paragraph about renewable energy.", "type": "persuasion"},
-                {"description": "Summarize the concept of machine learning in two sentences.", "type": "summarization"},
-                {"description": "Edit this sentence for clarity: 'The thing that it does is bad.'", "type": "editing"},
+                {
+                    "description": "Write a persuasive paragraph about renewable energy.",
+                    "type": "persuasion",
+                },
+                {
+                    "description": "Summarize the concept of machine learning in two sentences.",
+                    "type": "summarization",
+                },
+                {
+                    "description": "Edit this sentence for clarity: 'The thing that it does is bad.'",
+                    "type": "editing",
+                },
             ],
         }
-        return domain_tasks.get(domain, [
-            {"description": "Explain what you are capable of.", "type": "general"},
-            {"description": "List three strategies for solving complex problems.", "type": "general"},
-            {"description": "Describe a best practice for collaborative AI systems.", "type": "general"},
-        ])
+        return domain_tasks.get(
+            domain,
+            [
+                {"description": "Explain what you are capable of.", "type": "general"},
+                {
+                    "description": "List three strategies for solving complex problems.",
+                    "type": "general",
+                },
+                {
+                    "description": "Describe a best practice for collaborative AI systems.",
+                    "type": "general",
+                },
+            ],
+        )
 
     def start_run(
         self,
@@ -413,12 +464,10 @@ class LocalRunner:
                 last = record.generation_summaries[-1]
                 record.best_agent_id = last.get("best_agent_id")
             record.current_generation = config.num_iterations
-            record.finished_at = datetime.now(timezone.utc)
+            record.finished_at = datetime.now(UTC)
 
             agents = record.pool.agents
-            mean_score = (
-                sum(a.combined_score for a in agents) / len(agents) if agents else 0.0
-            )
+            mean_score = sum(a.combined_score for a in agents) / len(agents) if agents else 0.0
 
             if self._db is not None:
                 await self._db.execute_write(
@@ -445,7 +494,7 @@ class LocalRunner:
         except Exception as exc:
             record.status = "failed"
             record.error = str(exc)
-            record.finished_at = datetime.now(timezone.utc)
+            record.finished_at = datetime.now(UTC)
 
             if self._db is not None:
                 await self._db.execute_write(
@@ -466,6 +515,7 @@ class LocalRunner:
             return
         try:
             from howler_agents.hivemind.coordinator import HiveMindCoordinator
+
             coordinator = HiveMindCoordinator(self._db)
             result = await coordinator.seed_from_run(run_id)
             logger.info("hivemind_seeded", run_id=run_id, **result)
@@ -479,9 +529,7 @@ class LocalRunner:
             raise KeyError(f"Unknown run_id: {run_id}")
 
         agents = record.pool.agents
-        mean_score = (
-            sum(a.combined_score for a in agents) / len(agents) if agents else 0.0
-        )
+        mean_score = sum(a.combined_score for a in agents) / len(agents) if agents else 0.0
 
         return {
             "run_id": run_id,
@@ -556,9 +604,7 @@ class LocalRunner:
         await record.experience.submit(trace)
         return trace.id
 
-    async def get_experience_context(
-        self, run_id: str, group_id: str | None = None
-    ) -> str:
+    async def get_experience_context(self, run_id: str, group_id: str | None = None) -> str:
         """Retrieve formatted experience context for a run/group."""
         record = self._runs.get(run_id)
         if record is None:

@@ -1,11 +1,11 @@
 """Tests for selection criterion."""
 
 import pytest
+from _helpers import make_agent
 
 from howler_agents.selection.criterion import PerformanceNoveltySelector
 from howler_agents.selection.novelty import KNNNoveltyEstimator
 from howler_agents.selection.performance import TaskPerformanceScorer
-from _helpers import make_agent
 
 
 def test_performance_scorer_normalizes():

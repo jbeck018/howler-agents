@@ -1,7 +1,8 @@
 """Tests for AgentPool."""
 
-from howler_agents.agents.pool import AgentPool
 from _helpers import make_agent
+
+from howler_agents.agents.pool import AgentPool
 
 
 def test_add_and_get():

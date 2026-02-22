@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import structlog
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
+import structlog
 
 log = structlog.get_logger(__name__)
 
@@ -30,6 +30,7 @@ class DatabaseManager:
     def __init__(self, db_path: Path | str | None = None) -> None:
         if db_path is None:
             from howler_agents.persistence.repo import get_db_path
+
             db_path = get_db_path()
 
         self._db_path = Path(db_path)
@@ -45,6 +46,7 @@ class DatabaseManager:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
         from howler_agents.persistence.repo import ensure_gitignore
+
         ensure_gitignore(self._db_path.parent)
 
         self._conn = await aiosqlite.connect(self._db_path)
@@ -55,6 +57,7 @@ class DatabaseManager:
         await self._conn.commit()
 
         from howler_agents.persistence.migrations import run_migrations
+
         await run_migrations(self)
 
         log.info("db_initialized", path=str(self._db_path))

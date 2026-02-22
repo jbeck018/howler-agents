@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
-from howler_agents.persistence.db import DatabaseManager
 from howler_agents.hivemind.memory import CollectiveMemory
+from howler_agents.persistence.db import DatabaseManager
 
 log = structlog.get_logger(__name__)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class ConsensusEngine:
@@ -78,9 +78,7 @@ class ConsensusEngine:
         if direction not in {"for", "against"}:
             raise ValueError(f"direction must be 'for' or 'against', got {direction!r}")
 
-        rows = await self._db.execute(
-            "SELECT * FROM consensus WHERE id = ?", (consensus_id,)
-        )
+        rows = await self._db.execute("SELECT * FROM consensus WHERE id = ?", (consensus_id,))
         if not rows:
             raise LookupError(f"Consensus item {consensus_id!r} not found")
 
@@ -119,9 +117,7 @@ class ConsensusEngine:
         Items with confidence >= 0.6 are accepted and promoted to collective
         memory. Returns the resolution outcome.
         """
-        rows = await self._db.execute(
-            "SELECT * FROM consensus WHERE id = ?", (consensus_id,)
-        )
+        rows = await self._db.execute("SELECT * FROM consensus WHERE id = ?", (consensus_id,))
         if not rows:
             raise LookupError(f"Consensus item {consensus_id!r} not found")
 

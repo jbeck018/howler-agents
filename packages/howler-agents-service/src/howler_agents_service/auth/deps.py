@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Annotated
 from uuid import UUID
 
@@ -51,7 +52,6 @@ async def _user_from_api_key(raw_key: str, session: AsyncSession) -> CurrentUser
     key_prefix = raw_key[:16]
 
     from sqlalchemy import select
-    from howler_agents_service.auth.passwords import verify_password as _vp
 
     result = await session.execute(
         select(ApiKeyModel).where(
@@ -65,8 +65,9 @@ async def _user_from_api_key(raw_key: str, session: AsyncSession) -> CurrentUser
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     # Check expiry
-    from datetime import datetime, timezone
-    if api_key_row.expires_at and api_key_row.expires_at < datetime.now(timezone.utc):
+    from datetime import datetime
+
+    if api_key_row.expires_at and api_key_row.expires_at < datetime.now(UTC):
         raise HTTPException(status_code=401, detail="API key expired")
 
     if not verify_password(raw_key, api_key_row.key_hash):
@@ -83,9 +84,10 @@ async def _user_from_api_key(raw_key: str, session: AsyncSession) -> CurrentUser
 
     # Fetch one user in the org to satisfy CurrentUser (API keys are org-level)
     user_result = await session.execute(
-        select(UserModel).join(
-            OrgMemberModel, OrgMemberModel.user_id == UserModel.id
-        ).where(OrgMemberModel.org_id == api_key_row.org_id).limit(1)
+        select(UserModel)
+        .join(OrgMemberModel, OrgMemberModel.user_id == UserModel.id)
+        .where(OrgMemberModel.org_id == api_key_row.org_id)
+        .limit(1)
     )
     user = user_result.scalars().first()
     if user is None:

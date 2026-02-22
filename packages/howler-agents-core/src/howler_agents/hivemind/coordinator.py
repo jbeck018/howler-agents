@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
-from howler_agents.persistence.db import DatabaseManager
-from howler_agents.hivemind.memory import CollectiveMemory
 from howler_agents.hivemind.consensus import ConsensusEngine
+from howler_agents.hivemind.memory import CollectiveMemory
+from howler_agents.persistence.db import DatabaseManager
 
 log = structlog.get_logger(__name__)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class HiveMindCoordinator:
@@ -125,12 +125,8 @@ class HiveMindCoordinator:
 
     async def export_json(self) -> dict[str, Any]:
         """Export all hive-mind data as a JSON-serialisable dict."""
-        memories = await self._db.execute(
-            "SELECT * FROM memory ORDER BY namespace, key"
-        )
-        consensus_items = await self._db.execute(
-            "SELECT * FROM consensus ORDER BY created_at"
-        )
+        memories = await self._db.execute("SELECT * FROM memory ORDER BY namespace, key")
+        consensus_items = await self._db.execute("SELECT * FROM consensus ORDER BY created_at")
         return {"memory": memories, "consensus": consensus_items}
 
     async def import_json(self, data: dict[str, Any]) -> dict[str, Any]:

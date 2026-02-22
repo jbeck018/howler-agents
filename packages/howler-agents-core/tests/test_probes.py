@@ -1,11 +1,11 @@
 """Tests for probe evaluator and registry."""
 
 import pytest
+from _helpers import MockAgent
 
+from howler_agents.agents.base import AgentConfig
 from howler_agents.probes.evaluator import ProbeEvaluator
 from howler_agents.probes.registry import ProbeRegistry
-from _helpers import MockAgent
-from howler_agents.agents.base import AgentConfig
 
 
 @pytest.fixture

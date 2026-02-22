@@ -10,14 +10,14 @@ import pytest
 # Make _helpers importable from test files
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _helpers import MockAgent, make_agent  # noqa: E402
+from _helpers import MockAgent, make_agent
 
-from howler_agents.agents.base import AgentConfig  # noqa: E402
-from howler_agents.config import HowlerConfig  # noqa: E402
-from howler_agents.experience.store.memory import InMemoryStore  # noqa: E402
+from howler_agents.agents.base import AgentConfig
+from howler_agents.config import HowlerConfig
+from howler_agents.experience.store.memory import InMemoryStore
 
 # Re-export for backward compat
-__all__ = ["MockAgent", "make_agent", "AgentConfig"]
+__all__ = ["AgentConfig", "MockAgent", "make_agent"]
 
 
 @pytest.fixture

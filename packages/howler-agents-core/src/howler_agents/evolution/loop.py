@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 import structlog
 
 from howler_agents.agents.base import Agent
@@ -14,6 +17,8 @@ from howler_agents.probes.evaluator import ProbeEvaluator
 from howler_agents.selection.criterion import PerformanceNoveltySelector
 
 logger = structlog.get_logger()
+
+EvolutionHook = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
 class EvolutionLoop:
@@ -35,6 +40,7 @@ class EvolutionLoop:
         reproducer: GroupReproducer,
         experience: SharedExperiencePool,
         probe_evaluator: ProbeEvaluator,
+        hooks: list[EvolutionHook] | None = None,
     ) -> None:
         self._config = config
         self._pool = pool
@@ -42,6 +48,15 @@ class EvolutionLoop:
         self._reproducer = reproducer
         self._experience = experience
         self._probes = probe_evaluator
+        self._hooks: list[EvolutionHook] = hooks or []
+
+    async def _fire_hook(self, event: str, data: dict[str, Any]) -> None:
+        """Dispatch a lifecycle event to all registered hooks."""
+        for hook in self._hooks:
+            try:
+                await hook(event, data)
+            except Exception as exc:
+                logger.warning("hook_error", event=event, error=str(exc))
 
     async def step(self, run_id: str, generation: int, tasks: list[dict]) -> dict:
         """Execute one generation of evolution.
@@ -49,6 +64,9 @@ class EvolutionLoop:
         Returns a summary dict with generation stats.
         """
         logger.info("generation_start", generation=generation, population=self._pool.size)
+        await self._fire_hook(
+            "generation_start", {"generation": generation, "population": self._pool.size}
+        )
 
         # 1. Evaluate agents on tasks
         agents = self._pool.agents
@@ -74,6 +92,10 @@ class EvolutionLoop:
 
             agent.performance_score = total_score / len(tasks) if tasks else 0
 
+        await self._fire_hook(
+            "evaluation_complete", {"generation": generation, "agents_evaluated": len(agents)}
+        )
+
         # 2. Evaluate probes for capability vectors
         for agent in agents:
             agent.capability_vector = await self._probes.evaluate(agent)
@@ -84,6 +106,10 @@ class EvolutionLoop:
             survivors = self._selector.select_groups(agents, num_survivors)
         else:
             survivors = self._selector.select(agents, num_survivors)
+
+        await self._fire_hook(
+            "selection_complete", {"generation": generation, "survivors": len(survivors)}
+        )
 
         # 4. Reproduce to fill population
         new_agents: list[Agent] = list(survivors)
@@ -120,6 +146,7 @@ class EvolutionLoop:
         }
 
         logger.info("generation_complete", **summary)
+        await self._fire_hook("generation_complete", summary)
         return summary
 
     async def run(self, run_id: str, tasks: list[dict]) -> dict:

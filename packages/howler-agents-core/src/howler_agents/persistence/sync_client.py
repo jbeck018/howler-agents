@@ -31,25 +31,14 @@ class SyncClient:
         """Push a completed run (run + agents + traces) to the remote API."""
         import httpx
 
-        run_data = await db.execute(
-            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-        )
+        run_data = await db.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,))
         if not run_data:
             return {"error": f"Run {run_id} not found"}
         if run_data[0]["status"] != "completed":
-            return {
-                "error": (
-                    f"Run {run_id} is not completed"
-                    f" (status={run_data[0]['status']})"
-                )
-            }
+            return {"error": (f"Run {run_id} is not completed (status={run_data[0]['status']})")}
 
-        agents = await db.execute(
-            "SELECT * FROM agents WHERE run_id = ?", (run_id,)
-        )
-        traces = await db.execute(
-            "SELECT * FROM traces WHERE run_id = ?", (run_id,)
-        )
+        agents = await db.execute("SELECT * FROM agents WHERE run_id = ?", (run_id,))
+        traces = await db.execute("SELECT * FROM traces WHERE run_id = ?", (run_id,))
 
         payload: dict[str, Any] = {
             "run": run_data[0],
@@ -69,15 +58,11 @@ class SyncClient:
         log.info("push_run_complete", run_id=run_id, agents=len(agents), traces=len(traces))
         return result
 
-    async def push_memory(
-        self, db: DatabaseManager, namespace: str = "default"
-    ) -> dict[str, Any]:
+    async def push_memory(self, db: DatabaseManager, namespace: str = "default") -> dict[str, Any]:
         """Push local memory entries for *namespace* to the remote API."""
         import httpx
 
-        entries = await db.execute(
-            "SELECT * FROM memory WHERE namespace = ?", (namespace,)
-        )
+        entries = await db.execute("SELECT * FROM memory WHERE namespace = ?", (namespace,))
         if not entries:
             log.debug("push_memory_empty", namespace=namespace)
             return {"pushed": 0}
@@ -94,9 +79,7 @@ class SyncClient:
         log.info("push_memory_complete", namespace=namespace, entries=len(entries))
         return result
 
-    async def pull_memory(
-        self, db: DatabaseManager, namespace: str = "default"
-    ) -> dict[str, Any]:
+    async def pull_memory(self, db: DatabaseManager, namespace: str = "default") -> dict[str, Any]:
         """Pull memory entries from the remote and merge them into local SQLite.
 
         Uses a score-wins strategy: remote values only replace local ones when

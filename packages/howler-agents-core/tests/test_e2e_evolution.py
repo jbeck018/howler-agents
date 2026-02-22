@@ -11,13 +11,13 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from howler_agents.agents.base import Agent, AgentConfig, FrameworkPatch, TaskResult
 from howler_agents.agents.pool import AgentPool
-from howler_agents.config import HowlerConfig, LLMRole
+from howler_agents.config import HowlerConfig
 from howler_agents.evolution.directive import EvolutionDirective
 from howler_agents.evolution.loop import EvolutionLoop
 from howler_agents.evolution.reproducer import GroupReproducer
@@ -29,10 +29,10 @@ from howler_agents.probes.evaluator import ProbeEvaluator
 from howler_agents.probes.registry import ProbeRegistry
 from howler_agents.selection.criterion import PerformanceNoveltySelector
 
-
 # ---------------------------------------------------------------------------
 # Test agent implementation (mirrors EvolvingAgent from test_gea_mechanisms.py)
 # ---------------------------------------------------------------------------
+
 
 class EvolvingAgent(Agent):
     """Deterministic agent whose skill improves with each patch applied."""
@@ -74,6 +74,7 @@ def make_evolving_agent(skill: float = 0.3, generation: int = 0) -> EvolvingAgen
 # Mock LLM infrastructure — no real API calls
 # ---------------------------------------------------------------------------
 
+
 def _make_litellm_response(content: str) -> MagicMock:
     """Build a litellm-shaped response object from a plain string."""
     msg = MagicMock()
@@ -86,22 +87,26 @@ def _make_litellm_response(content: str) -> MagicMock:
 
 
 def _directive_json(intent: str = "Improve error handling", strategy: str = "incremental") -> str:
-    return json.dumps({
-        "intent": intent,
-        "target_areas": ["error_handling", "input_validation"],
-        "strategy": strategy,
-        "confidence": 0.8,
-        "reasoning": "Experience traces show recurring failures in error handling",
-    })
+    return json.dumps(
+        {
+            "intent": intent,
+            "target_areas": ["error_handling", "input_validation"],
+            "strategy": strategy,
+            "confidence": 0.8,
+            "reasoning": "Experience traces show recurring failures in error handling",
+        }
+    )
 
 
 def _patch_json(intent: str = "Add error handling", category: str = "error_handling") -> str:
-    return json.dumps({
-        "intent": intent,
-        "diff": "--- a/agent.py\n+++ b/agent.py\n@@ -1,3 +1,6 @@\n+try:\n+    result = execute()\n+except Exception as e:\n+    log_error(e)",
-        "category": category,
-        "config_updates": {},
-    })
+    return json.dumps(
+        {
+            "intent": intent,
+            "diff": "--- a/agent.py\n+++ b/agent.py\n@@ -1,3 +1,6 @@\n+try:\n+    result = execute()\n+except Exception as e:\n+    log_error(e)",
+            "category": category,
+            "config_updates": {},
+        }
+    )
 
 
 def make_deterministic_acompletion(
@@ -113,6 +118,7 @@ def make_deterministic_acompletion(
     The mock inspects the prompt text to decide whether the call is a directive
     request or a patch request, then returns the appropriate JSON.
     """
+
     async def _acompletion(**kwargs: Any) -> MagicMock:
         messages = kwargs.get("messages", [])
         prompt_text = messages[-1]["content"] if messages else ""
@@ -132,6 +138,7 @@ def make_deterministic_acompletion(
 # ---------------------------------------------------------------------------
 # Shared fixture helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_full_stack(
     population_size: int = 4,
@@ -181,13 +188,12 @@ def _make_full_stack(
 # Test 1 — full pipeline from experience traces to FrameworkPatch
 # ===========================================================================
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_full_pipeline_experience_to_patch():
     """Real GroupReproducer consumes experience traces and returns a valid FrameworkPatch."""
-    config = HowlerConfig(
-        population_size=4, group_size=2, num_iterations=1, num_probes=5
-    )
+    config = HowlerConfig(population_size=4, group_size=2, num_iterations=1, num_probes=5)
 
     store = InMemoryStore()
     experience = SharedExperiencePool(store)
@@ -199,26 +205,30 @@ async def test_full_pipeline_experience_to_patch():
     agent = make_evolving_agent(skill=0.6)
     agent.performance_score = 0.6
 
-    await experience.submit(EvolutionaryTrace(
-        agent_id=agent.id,
-        run_id=run_id,
-        generation=0,
-        task_description="solve authentication bug",
-        outcome="success",
-        score=0.75,
-        key_decisions=["chose token-based auth"],
-        lessons_learned=["retry logic improves reliability"],
-    ))
-    await experience.submit(EvolutionaryTrace(
-        agent_id=agent.id,
-        run_id=run_id,
-        generation=0,
-        task_description="add unit tests",
-        outcome="failure",
-        score=0.3,
-        key_decisions=["skipped edge cases"],
-        lessons_learned=["always test boundary conditions"],
-    ))
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=agent.id,
+            run_id=run_id,
+            generation=0,
+            task_description="solve authentication bug",
+            outcome="success",
+            score=0.75,
+            key_decisions=["chose token-based auth"],
+            lessons_learned=["retry logic improves reliability"],
+        )
+    )
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=agent.id,
+            run_id=run_id,
+            generation=0,
+            task_description="add unit tests",
+            outcome="failure",
+            score=0.3,
+            key_decisions=["skipped edge cases"],
+            lessons_learned=["always test boundary conditions"],
+        )
+    )
 
     captured_messages: list[list[dict]] = []
 
@@ -266,6 +276,7 @@ async def test_full_pipeline_experience_to_patch():
 # Test 2 — experience content influences LLM prompt
 # ===========================================================================
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_experience_influences_reproduction():
@@ -283,25 +294,29 @@ async def test_experience_influences_reproduction():
     agent_a = make_evolving_agent(skill=0.5)
     agent_b = make_evolving_agent(skill=0.5)
 
-    await experience_a.submit(EvolutionaryTrace(
-        agent_id=agent_a.id,
-        run_id=run_id,
-        generation=0,
-        task_description="optimize database queries",
-        outcome="success",
-        score=0.85,
-        lessons_learned=["use tool_X for better indexing performance"],
-    ))
+    await experience_a.submit(
+        EvolutionaryTrace(
+            agent_id=agent_a.id,
+            run_id=run_id,
+            generation=0,
+            task_description="optimize database queries",
+            outcome="success",
+            score=0.85,
+            lessons_learned=["use tool_X for better indexing performance"],
+        )
+    )
 
-    await experience_b.submit(EvolutionaryTrace(
-        agent_id=agent_b.id,
-        run_id=run_id,
-        generation=0,
-        task_description="optimize database queries",
-        outcome="failure",
-        score=0.2,
-        lessons_learned=["avoid tool_X — it causes deadlocks under load"],
-    ))
+    await experience_b.submit(
+        EvolutionaryTrace(
+            agent_id=agent_b.id,
+            run_id=run_id,
+            generation=0,
+            task_description="optimize database queries",
+            outcome="failure",
+            score=0.2,
+            lessons_learned=["avoid tool_X — it causes deadlocks under load"],
+        )
+    )
 
     prompts_a: list[str] = []
     prompts_b: list[str] = []
@@ -326,12 +341,12 @@ async def test_experience_influences_reproduction():
     reproducer_b = GroupReproducer(llm=llm, experience_pool=experience_b, config=config)
 
     with patch("litellm.acompletion", side_effect=capture_a):
-        patch_a, _ = await reproducer_a.reproduce(
+        _patch_a, _ = await reproducer_a.reproduce(
             parent=agent_a, run_id=run_id, group_id="g0", generation=1
         )
 
     with patch("litellm.acompletion", side_effect=capture_b):
-        patch_b, _ = await reproducer_b.reproduce(
+        _patch_b, _ = await reproducer_b.reproduce(
             parent=agent_b, run_id=run_id, group_id="g0", generation=1
         )
 
@@ -352,6 +367,7 @@ async def test_experience_influences_reproduction():
 # ===========================================================================
 # Test 3 — 5-generation improvement with real pipeline
 # ===========================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -406,17 +422,14 @@ async def test_multi_generation_improvement_e2e():
     )
 
     # Verify at least 3 of 5 step-over-step transitions are non-decreasing
-    improvements = sum(
-        1 for a, b in zip(gen_scores, gen_scores[1:]) if b >= a
-    )
-    assert improvements >= 2, (
-        f"Expected mostly non-decreasing scores, got {gen_scores}"
-    )
+    improvements = sum(1 for a, b in zip(gen_scores, gen_scores[1:]) if b >= a)
+    assert improvements >= 2, f"Expected mostly non-decreasing scores, got {gen_scores}"
 
 
 # ===========================================================================
 # Test 4 — group context contains traces from ALL agents in the group
 # ===========================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -440,15 +453,17 @@ async def test_group_experience_aggregation_in_reproduction():
     ]
 
     for agent, lesson in zip(agents, distinct_lessons):
-        await experience.submit(EvolutionaryTrace(
-            agent_id=agent.id,
-            run_id=run_id,
-            generation=0,
-            task_description="general coding task",
-            outcome="success",
-            score=0.7,
-            lessons_learned=[lesson],
-        ))
+        await experience.submit(
+            EvolutionaryTrace(
+                agent_id=agent.id,
+                run_id=run_id,
+                generation=0,
+                task_description="general coding task",
+                outcome="success",
+                score=0.7,
+                lessons_learned=[lesson],
+            )
+        )
         agent.performance_score = 0.7
 
     captured_directive_prompt: list[str] = []
@@ -464,7 +479,7 @@ async def test_group_experience_aggregation_in_reproduction():
     parent = agents[0]
 
     with patch("litellm.acompletion", side_effect=_capture):
-        patch_obj, directive = await reproducer.reproduce(
+        patch_obj, _directive = await reproducer.reproduce(
             parent=parent,
             run_id=run_id,
             group_id="group-0",
@@ -488,6 +503,7 @@ async def test_group_experience_aggregation_in_reproduction():
 # Test 5 — cross-lineage knowledge flows into reproduction
 # ===========================================================================
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_cross_lineage_knowledge_transfer():
@@ -505,25 +521,29 @@ async def test_cross_lineage_knowledge_transfer():
     lineage_a_agent = make_evolving_agent(skill=0.5)
     lineage_b_agent = make_evolving_agent(skill=0.5)
 
-    await experience.submit(EvolutionaryTrace(
-        agent_id=lineage_a_agent.id,
-        run_id=run_id,
-        generation=0,
-        task_description="lineage A task",
-        outcome="success",
-        score=0.8,
-        lessons_learned=["lineage_A_knowledge: use recursive descent"],
-    ))
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=lineage_a_agent.id,
+            run_id=run_id,
+            generation=0,
+            task_description="lineage A task",
+            outcome="success",
+            score=0.8,
+            lessons_learned=["lineage_A_knowledge: use recursive descent"],
+        )
+    )
 
-    await experience.submit(EvolutionaryTrace(
-        agent_id=lineage_b_agent.id,
-        run_id=run_id,
-        generation=0,
-        task_description="lineage B task",
-        outcome="success",
-        score=0.7,
-        lessons_learned=["lineage_B_knowledge: use iterative deepening"],
-    ))
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=lineage_b_agent.id,
+            run_id=run_id,
+            generation=0,
+            task_description="lineage B task",
+            outcome="success",
+            score=0.7,
+            lessons_learned=["lineage_B_knowledge: use iterative deepening"],
+        )
+    )
 
     # --- Generation 1: A' and B' offspring placed in the same group ---
     child_a = make_evolving_agent(skill=0.5, generation=1)
@@ -533,24 +553,28 @@ async def test_cross_lineage_knowledge_transfer():
     child_b.config.parent_id = lineage_b_agent.id
 
     # Their gen-1 traces also go into the pool
-    await experience.submit(EvolutionaryTrace(
-        agent_id=child_a.id,
-        run_id=run_id,
-        generation=1,
-        task_description="mixed group task",
-        outcome="success",
-        score=0.75,
-        lessons_learned=["child_A_knowledge: combine A and B approaches"],
-    ))
-    await experience.submit(EvolutionaryTrace(
-        agent_id=child_b.id,
-        run_id=run_id,
-        generation=1,
-        task_description="mixed group task",
-        outcome="success",
-        score=0.65,
-        lessons_learned=["child_B_knowledge: apply B strategy first"],
-    ))
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=child_a.id,
+            run_id=run_id,
+            generation=1,
+            task_description="mixed group task",
+            outcome="success",
+            score=0.75,
+            lessons_learned=["child_A_knowledge: combine A and B approaches"],
+        )
+    )
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=child_b.id,
+            run_id=run_id,
+            generation=1,
+            task_description="mixed group task",
+            outcome="success",
+            score=0.65,
+            lessons_learned=["child_B_knowledge: apply B strategy first"],
+        )
+    )
 
     child_a.performance_score = 0.75
     child_b.performance_score = 0.65
@@ -566,7 +590,7 @@ async def test_cross_lineage_knowledge_transfer():
         return _make_litellm_response(_patch_json())
 
     with patch("litellm.acompletion", side_effect=_capture):
-        patch_obj, directive = await reproducer.reproduce(
+        patch_obj, _directive = await reproducer.reproduce(
             parent=child_a,
             run_id=run_id,
             group_id="mixed-group",
@@ -586,6 +610,7 @@ async def test_cross_lineage_knowledge_transfer():
 # ===========================================================================
 # Test 6 — novelty decreases as agents converge on identical patches
 # ===========================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -611,11 +636,11 @@ async def test_novelty_decreases_as_agents_converge():
     selector = PerformanceNoveltySelector(alpha=0.5)
     selector.score_agents(agents_gen0)
     initial_novelty_scores = [a.novelty_score for a in agents_gen0]
-    initial_mean_novelty = sum(initial_novelty_scores) / len(initial_novelty_scores)
+    _initial_mean_novelty = sum(initial_novelty_scores) / len(initial_novelty_scores)
 
     # Apply the SAME patch to all agents, then re-score novelty
-    reproducer = GroupReproducer(llm=llm, experience_pool=experience, config=config)
-    run_id = "convergence-run"
+    _reproducer = GroupReproducer(llm=llm, experience_pool=experience, config=config)
+    _run_id = "convergence-run"
 
     converged_patch = FrameworkPatch(
         id=str(uuid.uuid4()),
@@ -633,7 +658,7 @@ async def test_novelty_decreases_as_agents_converge():
 
     selector.score_agents(agents_gen0)
     converged_novelty_scores = [a.novelty_score for a in agents_gen0]
-    converged_mean_novelty = sum(converged_novelty_scores) / len(converged_novelty_scores)
+    _converged_mean_novelty = sum(converged_novelty_scores) / len(converged_novelty_scores)
 
     # When all capability vectors are identical the KNN distance is 0 for all,
     # which the estimator normalises to 1.0 (max).  What we're actually checking
@@ -650,6 +675,7 @@ async def test_novelty_decreases_as_agents_converge():
 # ===========================================================================
 # Test 7 — balanced combined score drives selection (alpha=0.5)
 # ===========================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -709,15 +735,15 @@ async def test_combined_score_drives_selection():
     # in combined score — performance contributes 50%
     high_perf = agents[:3]
     high_nov = agents[3:6]
-    assert all(
-        hp.combined_score >= hn.combined_score
-        for hp, hn in zip(high_perf, high_nov)
-    ), "High-performance agents should have higher combined scores than low-performance agents"
+    assert all(hp.combined_score >= hn.combined_score for hp, hn in zip(high_perf, high_nov)), (
+        "High-performance agents should have higher combined scores than low-performance agents"
+    )
 
 
 # ===========================================================================
 # Test — LLM prompt carries the experience_context section header
 # ===========================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -734,15 +760,17 @@ async def test_reproduce_prompt_contains_experience_header():
     agent = make_evolving_agent(skill=0.6)
     agent.performance_score = 0.6
 
-    await experience.submit(EvolutionaryTrace(
-        agent_id=agent.id,
-        run_id=run_id,
-        generation=0,
-        task_description="verify prompt structure",
-        outcome="success",
-        score=0.9,
-        lessons_learned=["unique_marker_xzq: lesson content"],
-    ))
+    await experience.submit(
+        EvolutionaryTrace(
+            agent_id=agent.id,
+            run_id=run_id,
+            generation=0,
+            task_description="verify prompt structure",
+            outcome="success",
+            score=0.9,
+            lessons_learned=["unique_marker_xzq: lesson content"],
+        )
+    )
 
     captured: list[str] = []
 
@@ -773,6 +801,7 @@ async def test_reproduce_prompt_contains_experience_header():
 # ===========================================================================
 # Test — reproduce falls back gracefully on malformed LLM responses
 # ===========================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio

@@ -1,17 +1,17 @@
 """FastAPI application factory."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from howler_agents_service.db.engine import init_db, close_db
+from howler_agents_service.db.engine import close_db, init_db
+from howler_agents_service.rest.routes.agents import router as agents_router
+from howler_agents_service.rest.routes.auth import router as auth_router
+from howler_agents_service.rest.routes.experience import router as experience_router
 from howler_agents_service.rest.routes.health import router as health_router
 from howler_agents_service.rest.routes.runs import router as runs_router
-from howler_agents_service.rest.routes.agents import router as agents_router
-from howler_agents_service.rest.routes.experience import router as experience_router
-from howler_agents_service.rest.routes.auth import router as auth_router
 
 
 @asynccontextmanager

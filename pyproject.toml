@@ -1,5 +1,5 @@
 [project]
-name = "howler-agents"
+name = "howler-agents-workspace"
 version = "0.1.0"
 description = "Group-Evolving Agents - groups of AI agents evolve together by sharing experience across lineages"
 readme = "README.md"

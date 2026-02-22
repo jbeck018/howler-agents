@@ -11,6 +11,7 @@ from typing import Any
 @dataclass
 class AgentConfig:
     """Configuration state of a single agent."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     generation: int = 0
     parent_id: str | None = None
@@ -22,6 +23,7 @@ class AgentConfig:
 @dataclass
 class TaskResult:
     """Result from an agent performing a task."""
+
     success: bool
     score: float
     output: str = ""
@@ -70,6 +72,7 @@ class Agent(ABC):
 @dataclass
 class FrameworkPatch:
     """A code/workflow mutation applied to an agent."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     agent_id: str = ""
     generation: int = 0

@@ -23,9 +23,7 @@ async def test_complete_routes_by_role(router: LLMRouter):
     mock_response.choices[0].message.content = "test response"
 
     with patch("litellm.acompletion", return_value=mock_response) as mock_llm:
-        result = await router.complete(
-            LLMRole.ACTING, [{"role": "user", "content": "hello"}]
-        )
+        result = await router.complete(LLMRole.ACTING, [{"role": "user", "content": "hello"}])
         assert result == "test response"
         mock_llm.assert_called_once()
         call_kwargs = mock_llm.call_args[1]

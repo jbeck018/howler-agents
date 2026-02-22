@@ -18,7 +18,11 @@
     },
     "howler-agents": {
       "command": "howler-agents",
-      "args": ["serve", "--transport", "stdio"]
+      "args": [
+        "serve",
+        "--transport",
+        "stdio"
+      ]
     }
   }
 }
