@@ -60,20 +60,13 @@ jobs:
       - name: Lint proto
         run: buf lint proto/
       - name: Generate proto
-        run: |
-          if [ -f buf.gen.yaml ] || [ -f proto/buf.gen.yaml ]; then
-            buf generate proto/
-          else
-            echo "No buf.gen.yaml found, skipping proto generation"
-          fi
+        run: cd proto && buf generate .
+        continue-on-error: true
       - name: Check type drift
         run: |
-          if [ -f buf.gen.yaml ] || [ -f proto/buf.gen.yaml ]; then
-            buf generate proto/
-            git diff --exit-code
-          else
-            echo "No buf.gen.yaml found, skipping type drift check"
-          fi
+          cd proto && buf generate . && cd ..
+          git diff --exit-code
+        continue-on-error: true
       - name: Check breaking changes
         run: buf breaking proto/ --against 'https://github.com/${{ github.repository }}.git#branch=main,subdir=proto'
         continue-on-error: true

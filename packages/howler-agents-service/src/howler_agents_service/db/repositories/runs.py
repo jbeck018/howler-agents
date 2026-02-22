@@ -52,7 +52,7 @@ class RunsRepo:
     ) -> EvolutionRunModel | None:
         run = await self.get(run_id)
         if run:
-            run.status = status
+            run.status = status  # type: ignore[assignment]
             for key, value in kwargs.items():
                 if hasattr(run, key):
                     setattr(run, key, value)

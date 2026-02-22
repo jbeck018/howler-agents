@@ -137,7 +137,7 @@ class AgentModel(Base):
     performance_score = Column(Float, default=0)
     novelty_score = Column(Float, default=0)
     combined_score = Column(Float, default=0)
-    capability_vector = Column(ARRAY(Float), default=list)
+    capability_vector: list[float] = Column(ARRAY(Float), default=list)  # type: ignore[assignment]
     framework_config = Column(JSONB, default=dict)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
@@ -182,8 +182,8 @@ class EvolutionaryTraceModel(Base):
     task_description = Column(Text, nullable=False)
     outcome = Column(Text, nullable=False)
     score = Column(Float, nullable=False)
-    key_decisions = Column(ARRAY(Text), default=list)
-    lessons_learned = Column(ARRAY(Text), default=list)
+    key_decisions: list[str] = Column(ARRAY(Text), default=list)  # type: ignore[assignment]
+    lessons_learned: list[str] = Column(ARRAY(Text), default=list)  # type: ignore[assignment]
     recorded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     agent = relationship("AgentModel", back_populates="traces")
