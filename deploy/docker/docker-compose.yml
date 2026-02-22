@@ -1,0 +1,82 @@
+# =============================================================================
+# LOCAL DEVELOPMENT ONLY
+# This file is for running the full Howler Agents stack on your workstation.
+# It is NOT used in Kubernetes / DOKS — see deploy/k8s/ for cluster manifests.
+#
+# Quick start:
+#   cp .env.example .env          # fill in any local overrides
+#   docker compose up --build
+# =============================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: howler
+      POSTGRES_PASSWORD: howler
+      POSTGRES_DB: howler_agents
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # SQL migration files are run automatically on first start
+      - ../../migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U howler -d howler_agents"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    # No auth in local dev for convenience; production uses a password
+    # stored in the howler-agents-secrets Kubernetes Secret.
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  howler-agents-service:
+    build:
+      context: ../..
+      dockerfile: packages/howler-agents-service/Dockerfile
+    ports:
+      - "8080:8080"   # REST API
+      - "50051:50051" # gRPC
+    environment:
+      DATABASE_URL: postgresql+asyncpg://howler:howler@postgres:5432/howler_agents
+      REDIS_URL: redis://redis:6379/0
+      REST_PORT: "8080"
+      GRPC_PORT: "50051"
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      # JWT secret for local dev — use a real secret in production
+      JWT_SECRET: local-dev-jwt-secret-replace-in-production
+      CORS_ORIGINS: "http://localhost:3000"
+    env_file:
+      - ../../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  howler-agents-ui:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.ui
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://howler-agents-service:8080
+    depends_on:
+      - howler-agents-service
+
+volumes:
+  pgdata:
+  redisdata:

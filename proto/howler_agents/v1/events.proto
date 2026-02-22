@@ -1,0 +1,66 @@
+syntax = "proto3";
+package howler_agents.v1;
+
+option go_package = "github.com/howler-agents/howler-agents/gen/go/howler_agents/v1";
+
+import "google/protobuf/timestamp.proto";
+import "howler_agents/v1/types.proto";
+
+// Streaming event emitted during evolution
+message EvolutionEvent {
+  string run_id = 1;
+  oneof event {
+    GenerationStarted generation_started = 2;
+    AgentEvaluated agent_evaluated = 3;
+    SelectionCompleted selection_completed = 4;
+    ReproductionCompleted reproduction_completed = 5;
+    GenerationCompleted generation_completed = 6;
+    RunCompleted run_completed = 7;
+    RunFailed run_failed = 8;
+  }
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+message GenerationStarted {
+  int32 generation = 1;
+  int32 population_size = 2;
+}
+
+message AgentEvaluated {
+  string agent_id = 1;
+  int32 generation = 2;
+  double performance_score = 3;
+  double novelty_score = 4;
+  double combined_score = 5;
+}
+
+message SelectionCompleted {
+  int32 generation = 1;
+  int32 survivors = 2;
+  double mean_fitness = 3;
+  double max_fitness = 4;
+}
+
+message ReproductionCompleted {
+  int32 generation = 1;
+  int32 children_created = 2;
+  int32 patches_applied = 3;
+}
+
+message GenerationCompleted {
+  int32 generation = 1;
+  Agent best_agent = 2;
+  double best_score = 3;
+  double mean_score = 4;
+}
+
+message RunCompleted {
+  Agent best_agent = 1;
+  double best_score = 2;
+  int32 total_generations = 3;
+}
+
+message RunFailed {
+  string error = 1;
+  int32 failed_at_generation = 2;
+}

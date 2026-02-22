@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: howler-agents-docs
+  namespace: howler-agents
+  labels:
+    app: howler-agents-docs
+    app.kubernetes.io/name: howler-agents-docs
+    app.kubernetes.io/component: docs
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: howler-agents-docs
+  template:
+    metadata:
+      labels:
+        app: howler-agents-docs
+        app.kubernetes.io/name: howler-agents-docs
+        app.kubernetes.io/component: docs
+        app.kubernetes.io/part-of: howler-agents
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      imagePullSecrets:
+        - name: orochi-registry
+      containers:
+        - name: docs
+          image: registry.digitalocean.com/orochi-registry/howler-docs:latest
+          ports:
+            - containerPort: 3001
+              name: http
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /docs-site/
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /docs-site/
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      terminationGracePeriodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: howler-agents-docs
+  namespace: howler-agents
+  labels:
+    app: howler-agents-docs
+    app.kubernetes.io/name: howler-agents-docs
+    app.kubernetes.io/component: docs
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  selector:
+    app: howler-agents-docs
+  ports:
+    - port: 3001
+      targetPort: 3001
+      protocol: TCP
+      name: http

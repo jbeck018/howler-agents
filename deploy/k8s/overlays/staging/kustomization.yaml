@@ -1,0 +1,147 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: howler-agents
+
+resources:
+  - ../../base
+  - ../../ingress
+
+# Override image tags for staging — pin to a specific digest in CI
+images:
+  - name: ghcr.io/howler-agents/service
+    newTag: staging
+  - name: ghcr.io/howler-agents/ui
+    newTag: staging
+
+# Add environment label to all resources in this overlay
+labels:
+  - pairs:
+      environment: staging
+    includeSelectors: false
+
+patches:
+  # --- Service: 1 replica, reduced resources ---
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: howler-agents-service
+        namespace: howler-agents
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: service
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+
+  # --- UI: 1 replica, reduced resources ---
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: howler-agents-ui
+        namespace: howler-agents
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: ui
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+
+  # --- HPA: reduced bounds for staging ---
+  - patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: howler-agents-service-hpa
+        namespace: howler-agents
+      spec:
+        minReplicas: 1
+        maxReplicas: 3
+
+  - patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: howler-agents-ui-hpa
+        namespace: howler-agents
+      spec:
+        minReplicas: 1
+        maxReplicas: 2
+
+  # --- ConfigMap: staging domains and log level ---
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: howler-agents-config
+        namespace: howler-agents
+      data:
+        CORS_ORIGINS: "https://app.staging.howler.dev"
+        VITE_API_URL: "https://api.staging.howler.dev"
+        LOG_LEVEL: "DEBUG"
+
+  # --- Ingress: staging hostnames and staging cert issuer ---
+  - patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: howler-agents-api-ingress
+        namespace: howler-agents
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-staging"
+      spec:
+        tls:
+          - hosts:
+              - api.staging.howler.dev
+            secretName: howler-api-staging-tls
+        rules:
+          - host: api.staging.howler.dev
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: howler-agents-service
+                      port:
+                        number: 8080
+
+  - patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: howler-agents-ui-ingress
+        namespace: howler-agents
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-staging"
+      spec:
+        tls:
+          - hosts:
+              - app.staging.howler.dev
+            secretName: howler-ui-staging-tls
+        rules:
+          - host: app.staging.howler.dev
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: howler-agents-ui
+                      port:
+                        number: 3000

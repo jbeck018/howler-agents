@@ -1,0 +1,15 @@
+version: v2
+modules:
+  - path: .
+    name: buf.build/howler-agents/howler-agents
+lint:
+  use:
+    - STANDARD
+  except:
+    - FIELD_NOT_REQUIRED
+    - PACKAGE_NO_IMPORT_CYCLE
+breaking:
+  use:
+    - FILE
+deps:
+  - buf.build/googleapis/googleapis

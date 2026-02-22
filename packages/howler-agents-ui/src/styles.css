@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  /* HowlerOps Theme - OKLCh color space */
+  --color-primary: oklch(0.7516 0.1469 83.9881);
+  --color-primary-foreground: oklch(0.1451 0.0 0);
+
+  --color-background: oklch(0.0 0.0 0);
+  --color-foreground: oklch(0.9843 0.0 0);
+
+  --color-card: oklch(0.2178 0.0 0);
+  --color-card-foreground: oklch(0.9843 0.0 0);
+
+  --color-popover: oklch(0.2178 0.0 0);
+  --color-popover-foreground: oklch(0.9843 0.0 0);
+
+  --color-secondary: oklch(0.2692 0.0 0);
+  --color-secondary-foreground: oklch(0.9843 0.0 0);
+
+  --color-muted: oklch(0.2692 0.0 0);
+  --color-muted-foreground: oklch(0.7082 0.0 0);
+
+  --color-accent: oklch(0.2692 0.0 0);
+  --color-accent-foreground: oklch(0.9843 0.0 0);
+
+  --color-destructive: oklch(0.5772 0.1827 27.3348);
+  --color-destructive-foreground: oklch(0.9843 0.0 0);
+
+  --color-border: oklch(0.2850 0.0 0);
+  --color-input: oklch(0.2850 0.0 0);
+  --color-ring: oklch(0.7516 0.1469 83.9881);
+
+  --color-success: oklch(0.7233 0.1698 149.5793);
+  --color-warning: oklch(0.7689 0.1609 70.0804);
+
+  --radius: 0.5rem;
+  --font-mono: "Fira Code Variable", "Fira Code", ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-mono);
+  }
+}

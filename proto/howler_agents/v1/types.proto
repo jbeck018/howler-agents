@@ -1,0 +1,82 @@
+syntax = "proto3";
+package howler_agents.v1;
+
+option go_package = "github.com/howler-agents/howler-agents/gen/go/howler_agents/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Configuration for an evolution run
+message RunConfig {
+  int32 population_size = 1;     // K - total agents in population
+  int32 group_size = 2;          // M - agents per group
+  int32 num_iterations = 3;
+  double alpha = 4;              // performance vs novelty weight (0-1)
+  int32 num_probes = 5;          // probe tasks for capability vector
+  map<string, string> llm_config = 6;  // role -> model mapping
+  string task_domain = 7;        // e.g., "swe-bench", "polyglot"
+  google.protobuf.Struct task_config = 8;  // domain-specific config
+}
+
+// A single agent in the population
+message Agent {
+  string id = 1;
+  string run_id = 2;
+  int32 generation = 3;
+  string parent_id = 4;          // empty for initial population
+  string group_id = 5;
+  double performance_score = 6;
+  double novelty_score = 7;
+  double combined_score = 8;
+  repeated double capability_vector = 9;  // binary probe results
+  repeated FrameworkPatch patches = 10;   // accumulated mutations
+  google.protobuf.Timestamp created_at = 11;
+}
+
+// A group of agents that evolve together
+message AgentGroup {
+  string id = 1;
+  string run_id = 2;
+  int32 generation = 3;
+  repeated Agent agents = 4;
+  double group_performance = 5;
+}
+
+// A code/workflow mutation applied to an agent
+message FrameworkPatch {
+  string id = 1;
+  string agent_id = 2;
+  int32 generation = 3;
+  string intent = 4;              // natural language description of change
+  string diff = 5;                // unified diff of the change
+  string category = 6;            // e.g., "tool_use", "planning", "error_handling"
+  google.protobuf.Timestamp applied_at = 7;
+}
+
+// A trace of an agent's evolutionary history
+message EvolutionaryTrace {
+  string id = 1;
+  string agent_id = 2;
+  string run_id = 3;
+  int32 generation = 4;
+  string task_description = 5;
+  string outcome = 6;             // success/failure + details
+  double score = 7;
+  repeated string key_decisions = 8;
+  repeated string lessons_learned = 9;
+  google.protobuf.Timestamp recorded_at = 10;
+}
+
+// An evolution run
+message EvolutionRun {
+  string id = 1;
+  RunConfig config = 2;
+  string status = 3;              // "pending", "running", "completed", "failed"
+  int32 current_generation = 4;
+  int32 total_generations = 5;
+  repeated AgentGroup groups = 6;
+  Agent best_agent = 7;
+  double best_score = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}

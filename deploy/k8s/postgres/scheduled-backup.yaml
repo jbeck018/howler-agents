@@ -1,0 +1,17 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: howler-pg-daily-backup
+  namespace: howler-agents
+  labels:
+    app.kubernetes.io/name: howler-pg
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  # Run a full base backup every day at 02:00 UTC
+  schedule: "0 2 * * *"
+  backupOwnerReference: self
+  cluster:
+    name: howler-pg
+  # Retain the last 7 daily base backups (WAL archiving fills the gaps)
+  immediate: false

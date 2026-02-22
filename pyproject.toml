@@ -1,0 +1,60 @@
+[project]
+name = "howler-agents"
+version = "0.1.0"
+description = "Group-Evolving Agents - groups of AI agents evolve together by sharing experience across lineages"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = [
+    "packages/howler-agents-core",
+    "packages/howler-agents-service",
+]
+
+[tool.uv.sources]
+howler-agents-core = { workspace = true }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["packages/*/src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "RUF", # ruff-specific
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["howler_agents", "howler_agents_service"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/howler-agents-core/tests", "packages/howler-agents-service/tests"]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+markers = [
+    "integration: marks tests requiring external services (postgres, redis)",
+    "paper_validation: marks tests verifying mathematical properties from arXiv:2602.04837",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+packages = ["howler_agents", "howler_agents_service"]
+
+[[tool.mypy.overrides]]
+module = ["litellm.*", "sklearn.*", "grpc.*", "google.protobuf.*"]
+ignore_missing_imports = true

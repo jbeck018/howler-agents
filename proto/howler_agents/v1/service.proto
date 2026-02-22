@@ -1,0 +1,106 @@
+syntax = "proto3";
+package howler_agents.v1;
+
+option go_package = "github.com/howler-agents/howler-agents/gen/go/howler_agents/v1";
+
+import "howler_agents/v1/types.proto";
+import "howler_agents/v1/events.proto";
+
+service HowlerAgentsService {
+  // Run management
+  rpc CreateRun(CreateRunRequest) returns (CreateRunResponse);
+  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+
+  // Evolution control
+  rpc StepEvolution(StepEvolutionRequest) returns (StepEvolutionResponse);
+  rpc RunEvolution(RunEvolutionRequest) returns (RunEvolutionResponse);
+  rpc StreamEvolution(StreamEvolutionRequest) returns (stream EvolutionEvent);
+
+  // Agent queries
+  rpc GetAgentGroup(GetAgentGroupRequest) returns (GetAgentGroupResponse);
+  rpc GetBestAgents(GetBestAgentsRequest) returns (GetBestAgentsResponse);
+
+  // Experience submission
+  rpc SubmitExperience(SubmitExperienceRequest) returns (SubmitExperienceResponse);
+  rpc SubmitProbeResults(SubmitProbeResultsRequest) returns (SubmitProbeResultsResponse);
+}
+
+// --- Request/Response Messages ---
+
+message CreateRunRequest {
+  RunConfig config = 1;
+}
+message CreateRunResponse {
+  EvolutionRun run = 1;
+}
+
+message GetRunRequest {
+  string run_id = 1;
+}
+message GetRunResponse {
+  EvolutionRun run = 1;
+}
+
+message ListRunsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string status_filter = 3;
+}
+message ListRunsResponse {
+  repeated EvolutionRun runs = 1;
+  int32 total = 2;
+}
+
+message StepEvolutionRequest {
+  string run_id = 1;
+}
+message StepEvolutionResponse {
+  EvolutionRun run = 1;
+  int32 generation_completed = 2;
+}
+
+message RunEvolutionRequest {
+  string run_id = 1;
+}
+message RunEvolutionResponse {
+  EvolutionRun run = 1;
+}
+
+message StreamEvolutionRequest {
+  string run_id = 1;
+}
+
+message GetAgentGroupRequest {
+  string run_id = 1;
+  string group_id = 2;
+}
+message GetAgentGroupResponse {
+  AgentGroup group = 1;
+}
+
+message GetBestAgentsRequest {
+  string run_id = 1;
+  int32 top_k = 2;
+}
+message GetBestAgentsResponse {
+  repeated Agent agents = 1;
+}
+
+message SubmitExperienceRequest {
+  string run_id = 1;
+  string agent_id = 2;
+  EvolutionaryTrace trace = 3;
+}
+message SubmitExperienceResponse {
+  bool accepted = 1;
+}
+
+message SubmitProbeResultsRequest {
+  string run_id = 1;
+  string agent_id = 2;
+  repeated bool results = 3;
+}
+message SubmitProbeResultsResponse {
+  repeated double capability_vector = 1;
+}

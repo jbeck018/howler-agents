@@ -1,0 +1,67 @@
+# Bitnami Redis Helm chart values for Howler Agents
+# Install with:
+#   helm repo add bitnami https://charts.bitnami.com/bitnami
+#   helm repo update
+#   helm upgrade --install howler-redis bitnami/redis \
+#     --namespace howler-agents \
+#     --create-namespace \
+#     --values deploy/k8s/redis/values.yaml \
+#     --set auth.password="$(kubectl get secret howler-agents-secrets \
+#         -n howler-agents -o jsonpath='{.data.REDIS_PASSWORD}' | base64 -d)"
+
+# Architecture: standalone is sufficient for a cache layer.
+# Switch to replication (sentinel) when HA is required.
+architecture: standalone
+
+# Authentication
+auth:
+  enabled: true
+  # Password is passed via --set auth.password at install time;
+  # do NOT hardcode it here.
+  existingSecret: howler-agents-secrets
+  existingSecretPasswordKey: REDIS_PASSWORD
+
+# Standalone master configuration
+master:
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: do-block-storage
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # Redis configuration: optimise for cache use-case
+  configuration: |
+    maxmemory 200mb
+    maxmemory-policy allkeys-lru
+    save ""
+    appendonly no
+
+# Metrics sidecar for Prometheus
+metrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+  serviceMonitor:
+    # Set to true if the Prometheus Operator CRD is installed in the cluster
+    enabled: false
+
+# Disable replica in standalone mode
+replica:
+  replicaCount: 0
+
+# Pod labels for kustomize label selectors
+commonLabels:
+  app.kubernetes.io/part-of: howler-agents
+
+# Use the same namespace as the application
+# (passed via --namespace flag at install time)

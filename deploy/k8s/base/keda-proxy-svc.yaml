@@ -1,0 +1,14 @@
+# ExternalName service that routes to the KEDA HTTP interceptor.
+# The Ingress uses this so KEDA can manage scale-to-zero.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keda-http-proxy
+  namespace: howler-agents
+spec:
+  type: ExternalName
+  externalName: keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP

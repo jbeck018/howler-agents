@@ -1,0 +1,38 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  acme:
+    # Let's Encrypt production endpoint — use staging for testing:
+    # https://acme-staging-v02.api.letsencrypt.org/directory
+    server: https://acme-v02.api.letsencrypt.org/directory
+    # Replace with the email address that should receive expiry warnings
+    email: ops@howler.dev
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      # HTTP-01 challenge — requires the ingress controller to be reachable
+      # on port 80 from the public internet
+      - http01:
+          ingress:
+            class: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  labels:
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ops@howler.dev
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx

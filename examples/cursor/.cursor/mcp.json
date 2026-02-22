@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "howler-agents": {
+      "command": "howler-agents",
+      "args": ["serve"],
+      "env": {
+        "HOWLER_API_URL": "http://localhost:8080",
+        "HOWLER_API_KEY": ""
+      }
+    }
+  }
+}

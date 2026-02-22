@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: howler-agents-ui
+  namespace: howler-agents
+  labels:
+    app: howler-agents-ui
+    app.kubernetes.io/name: howler-agents-ui
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: howler-agents-ui
+  template:
+    metadata:
+      labels:
+        app: howler-agents-ui
+        app.kubernetes.io/name: howler-agents-ui
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: howler-agents
+      annotations:
+        # nginx does not expose Prometheus metrics by default;
+        # set scrape: false to avoid scrape failures. Add nginx-prometheus-exporter
+        # sidecar if metrics are needed in the future.
+        prometheus.io/scrape: "false"
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: howler-agents-ui
+      containers:
+        - name: ui
+          image: registry.digitalocean.com/orochi-registry/howler-ui:latest
+          ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+          # The UI is a compiled SPA; runtime config is injected via the
+          # VITE_API_URL build arg. The ConfigMap entry is kept here so
+          # nginx-level env-subst can override it if a dynamic config
+          # approach is adopted later.
+          env:
+            - name: VITE_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: howler-agents-config
+                  key: VITE_API_URL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      terminationGracePeriodSeconds: 15

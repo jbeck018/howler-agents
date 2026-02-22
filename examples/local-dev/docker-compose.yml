@@ -1,0 +1,78 @@
+# Howler Agents -- Minimal Local Development Stack
+#
+# Brings up the full howler-agents environment for local experimentation:
+#   - PostgreSQL 16 with pgvector for experience storage and KNN search
+#   - Redis 7 for hot caching
+#   - howler-agents-service (FastAPI REST API on port 8080)
+#
+# Usage:
+#   cd examples/local-dev
+#   ./setup.sh                      # one-time setup + start
+#   docker compose up -d             # subsequent starts
+#   docker compose down              # stop
+#   docker compose down -v           # stop + delete data
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: howler
+      POSTGRES_PASSWORD: howler
+      POSTGRES_DB: howler_agents
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+      - ../../migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U howler -d howler_agents"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  howler-service:
+    build:
+      context: ../..
+      dockerfile: packages/howler-agents-service/Dockerfile
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://howler:howler@postgres:5432/howler_agents
+      REDIS_URL: redis://redis:6379/0
+      REST_PORT: "8080"
+      GRPC_PORT: "50051"
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      JWT_SECRET: local-dev-jwt-secret-replace-in-production
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:
+  redisdata:

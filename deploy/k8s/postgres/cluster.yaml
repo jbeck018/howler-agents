@@ -1,0 +1,74 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: howler-pg
+  namespace: howler-agents
+  labels:
+    app.kubernetes.io/name: howler-pg
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  # 1 instance for dev/staging; increase to 3 for production HA
+  instances: 1
+
+  # PostgreSQL 16 with the pgvector extension pre-installed in this image
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+
+  postgresql:
+    # Load pgvector shared library at startup (required before CREATE EXTENSION)
+    shared_preload_libraries:
+      - vector
+    parameters:
+      max_connections: "200"
+      # ~25% of node RAM (assumes 1Gi node RAM for the DB workload)
+      shared_buffers: "256MB"
+      # ~75% of node RAM — tuned for read-heavy vector workloads
+      effective_cache_size: "768MB"
+      # Tune WAL for high-throughput writes
+      wal_level: "logical"
+      max_wal_senders: "10"
+
+  storage:
+    size: 20Gi
+    storageClass: do-block-storage
+
+  # Primary DB bootstrap: creates the application database, owner role,
+  # and installs required extensions
+  bootstrap:
+    initdb:
+      database: howler_agents
+      owner: howler
+      secret:
+        # CloudNativePG reads the password for the `howler` role from this secret.
+        # Create it before applying the cluster:
+        #   kubectl create secret generic howler-pg-app \
+        #     --namespace howler-agents \
+        #     --from-literal=username=howler \
+        #     --from-literal=password='<strong-password>'
+        name: howler-pg-app
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector
+        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
+
+  # Backups disabled for initial deploy. Enable with DO Spaces credentials:
+  # backup:
+  #   retentionPolicy: "30d"
+  #   barmanObjectStore:
+  #     destinationPath: "s3://howler-backups/postgres/"
+  #     endpointURL: "https://sfo3.digitaloceanspaces.com"
+  #     s3Credentials:
+  #       accessKeyId: { name: do-spaces-creds, key: ACCESS_KEY_ID }
+  #       secretAccessKey: { name: do-spaces-creds, key: SECRET_ACCESS_KEY }
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  # Anti-affinity: spread replicas across different nodes
+  affinity:
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname

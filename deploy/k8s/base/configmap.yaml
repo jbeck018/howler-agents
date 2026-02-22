@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: howler-agents-config
+  namespace: howler-agents
+  labels:
+    app.kubernetes.io/part-of: howler-agents
+data:
+  # ---- Server ports ----
+  REST_PORT: "8080"
+  GRPC_PORT: "50051"
+
+  # ---- Database host/port (password injected separately) ----
+  DATABASE_HOST: "howler-pg-rw.howler-agents.svc.cluster.local"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "howler_agents"
+  DATABASE_USER: "howler"
+
+  # ---- Redis host/port ----
+  REDIS_HOST: "howler-redis-master.howler-agents.svc.cluster.local"
+  REDIS_PORT: "6379"
+
+  # ---- CORS ----
+  CORS_ORIGINS: "*"
+
+  # ---- Logging ----
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+
+  # ---- Howler algorithm tuning ----
+  HOWLER_POPULATION_SIZE: "10"
+  HOWLER_GROUP_SIZE: "3"
+  HOWLER_NUM_ITERATIONS: "5"
+  HOWLER_ALPHA: "0.5"
+  HOWLER_NUM_PROBES: "20"
+
+  # ---- UI / nginx ----
+  VITE_API_URL: "/api"

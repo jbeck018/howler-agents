@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: howler-agents-service
+  namespace: howler-agents
+  labels:
+    app: howler-agents-service
+    app.kubernetes.io/name: howler-agents-service
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: howler-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: howler-agents-service
+  template:
+    metadata:
+      labels:
+        app: howler-agents-service
+        app.kubernetes.io/name: howler-agents-service
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: howler-agents
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: howler-agents-service
+      initContainers:
+        # Wait for Postgres to be ready before starting the app
+        - name: wait-for-pg
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z howler-pg-rw.howler-agents.svc.cluster.local 5432; do echo "Waiting for Postgres..."; sleep 2; done']
+      containers:
+        - name: service
+          image: registry.digitalocean.com/orochi-registry/howler-service:latest
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            - containerPort: 50051
+              name: grpc
+              protocol: TCP
+          # Non-sensitive config from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: howler-agents-config
+          # Build DATABASE_URL and REDIS_URL from components + secrets
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: howler-agents-secrets
+                  key: DATABASE_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: howler-agents-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: howler-agents-secrets
+                  key: JWT_SECRET
+            # Construct full connection URLs using init script
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)"
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)/0"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      terminationGracePeriodSeconds: 30

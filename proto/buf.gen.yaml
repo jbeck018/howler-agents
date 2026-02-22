@@ -1,0 +1,16 @@
+version: v2
+plugins:
+  # Python gRPC stubs
+  - local: python
+    out: ../packages/howler-agents-service/src/howler_agents_service/generated
+    opt: pyi_out=../packages/howler-agents-service/src/howler_agents_service/generated
+  - local: grpc_python
+    out: ../packages/howler-agents-service/src/howler_agents_service/generated
+
+  # TypeScript ConnectRPC
+  - remote: buf.build/connectrpc/es
+    out: ../packages/howler-agents-ts/src/generated
+    opt: target=ts
+  - remote: buf.build/connectrpc/query
+    out: ../packages/howler-agents-ts/src/generated
+    opt: target=ts

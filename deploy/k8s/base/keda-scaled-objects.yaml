@@ -1,0 +1,60 @@
+# KEDA HTTPScaledObjects — enable scale-to-zero for howler-agents.
+# When no HTTP requests arrive within the cooldown period, KEDA scales
+# the deployment to 0 replicas. When a new request arrives, KEDA's
+# HTTP interceptor queues it and scales the deployment to 1 replica.
+---
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: howler-agents-service-scaler
+  namespace: howler-agents
+spec:
+  hosts:
+    # Match any host (IP-based access, no DNS)
+    - ""
+  pathPrefixes:
+    - /api
+    - /health
+    - /docs
+    - /openapi.json
+  scaleTargetRef:
+    name: howler-agents-service
+    kind: Deployment
+    apiVersion: apps/v1
+    service: howler-agents-service
+    port: 8080
+  replicas:
+    min: 0
+    max: 5
+  scalingMetric:
+    requestRate:
+      targetValue: 100
+      granularity: 1s
+      window: 1m
+  scaledownPeriod: 300
+---
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: howler-agents-ui-scaler
+  namespace: howler-agents
+spec:
+  hosts:
+    - ""
+  pathPrefixes:
+    - /
+  scaleTargetRef:
+    name: howler-agents-ui
+    kind: Deployment
+    apiVersion: apps/v1
+    service: howler-agents-ui
+    port: 3000
+  replicas:
+    min: 0
+    max: 3
+  scalingMetric:
+    requestRate:
+      targetValue: 100
+      granularity: 1s
+      window: 1m
+  scaledownPeriod: 300

@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: howler-agents
+resources:
+  - namespace.yaml
+  - service-deployment.yaml
+  - ui-deployment.yaml
+  - docs-deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  - hpa.yaml
+  # secrets.yaml is intentionally omitted — create secrets via kubectl or
+  # External Secrets Operator; never commit real secret values to git.
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false

@@ -1,0 +1,65 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Node
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+
+# Proto generated
+packages/howler-agents-service/src/howler_agents_service/generated/
+packages/howler-agents-ts/src/generated/
+packages/howler-agents-ui/src/generated/
+
+# Build output
+packages/howler-agents-ts/dist/
+packages/howler-agents-ui/.output/
+packages/howler-agents-ui/.vinxi/
+packages/howler-agents-docs/.output/
+packages/howler-agents-docs/.vinxi/
+
+# Docker
+.docker/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Flow
+.claude-flow/
+.swarm/
+
+# Howler Agents local DB
+.howler-agents/
+
+# Claude local DB
+.claude/memory.db
+
+# Misc
+*.log
+tmp/

@@ -1,0 +1,114 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: howler-agents
+
+resources:
+  - ../../base
+  - ../../ingress
+
+# Pin production images to immutable digest tags via CI
+images:
+  - name: ghcr.io/howler-agents/service
+    newTag: latest
+  - name: ghcr.io/howler-agents/ui
+    newTag: latest
+
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: false
+
+patches:
+  # --- Service: 3 replicas, full resources, node affinity ---
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: howler-agents-service
+        namespace: howler-agents
+      spec:
+        replicas: 3
+        template:
+          spec:
+            containers:
+              - name: service
+                resources:
+                  requests:
+                    cpu: 500m
+                    memory: 1Gi
+                  limits:
+                    cpu: "1"
+                    memory: 2Gi
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node-type
+                          operator: In
+                          values:
+                            - application
+              # Spread service pods across different nodes
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app: howler-agents-service
+                    topologyKey: kubernetes.io/hostname
+
+  # --- UI: 2 replicas, full resources, node affinity ---
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: howler-agents-ui
+        namespace: howler-agents
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: ui
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 200m
+                    memory: 256Mi
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node-type
+                          operator: In
+                          values:
+                            - application
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app: howler-agents-ui
+                    topologyKey: kubernetes.io/hostname
+
+  # --- HPA: production scale bounds ---
+  - patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: howler-agents-service-hpa
+        namespace: howler-agents
+      spec:
+        minReplicas: 3
+        maxReplicas: 10
+
+  - patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: howler-agents-ui-hpa
+        namespace: howler-agents
+      spec:
+        minReplicas: 2
+        maxReplicas: 5
