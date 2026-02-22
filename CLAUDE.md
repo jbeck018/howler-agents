@@ -1,58 +1,123 @@
-# Claude Code Configuration - Claude Flow V3
+# Claude Code Configuration — Howler Agents
 
-## Behavioral Rules (Always Enforced)
+## Project Overview
 
-- Do what has been asked; nothing more, nothing less
-- NEVER create files unless they're absolutely necessary for achieving your goal
-- ALWAYS prefer editing an existing file to creating a new one
-- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
-- NEVER save working files, text/mds, or tests to the root folder
-- Never continuously check status after spawning a swarm — wait for results
-- ALWAYS read a file before editing it
-- NEVER commit secrets, credentials, or .env files
+- GEA (Group-Evolving Agents) implementation from arXiv:2602.04837
+- Python + TypeScript monorepo: `uv` for Python, `pnpm` for Node
+- Core library + FastAPI service + React dashboard + TypeScript SDK
 
-## File Organization
+## Monorepo Structure
 
-- NEVER save to root folder — use the directories below
-- Use `/src` for source code files
-- Use `/tests` for test files
-- Use `/docs` for documentation and markdown files
-- Use `/config` for configuration files
-- Use `/scripts` for utility scripts
-- Use `/examples` for example code
-
-## Project Architecture
-
-- Follow Domain-Driven Design with bounded contexts
-- Keep files under 500 lines
-- Use typed interfaces for all public APIs
-- Prefer TDD London School (mock-first) for new code
-- Use event sourcing for state changes
-- Ensure input validation at system boundaries
-
-### Project Config
-
-- **Topology**: hierarchical-mesh
-- **Max Agents**: 15
-- **Memory**: hybrid
-- **HNSW**: Enabled
-- **Neural**: Enabled
+```
+packages/howler-agents-core/    # Python core (pip: howler-agents-core)
+packages/howler-agents-service/ # FastAPI + gRPC service
+packages/howler-agents-ui/      # Vite + React dashboard (port 3000)
+packages/howler-agents-ts/      # TypeScript SDK (@howler-agents/sdk)
+packages/howler-agents-docs/    # Documentation site
+```
 
 ## Build & Test
 
 ```bash
-# Build
-npm run build
-
-# Test
-npm test
-
-# Lint
-npm run lint
+uv sync --all-extras --all-packages    # Install Python deps
+pnpm install                            # Install Node deps
+uv run pytest -v                        # 52 Python tests (run from root)
+cd packages/howler-agents-ts && pnpm exec vitest run  # TS tests
+cd packages/howler-agents-ui && npx vite build         # Build UI
 ```
 
 - ALWAYS run tests after making code changes
 - ALWAYS verify build succeeds before committing
+
+## MCP Server
+
+- The howler-agents MCP server exposes 11 tools for evolution, memory, and hive-mind management
+- Runs locally via SQLite (zero-config), optionally syncs to remote Postgres
+- Entry point: `howler-agents serve --transport stdio`
+- Registered in `.mcp.json`
+
+### MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `howler_evolve` | Start an evolution run |
+| `howler_status` | Check run progress |
+| `howler_list_agents` | List/rank agents in a run |
+| `howler_submit_experience` | Submit task experience trace |
+| `howler_get_experience` | Retrieve collective experience |
+| `howler_configure` | Set model configuration |
+| `howler_memory` | Access hive-mind memory |
+| `howler_history` | Browse past evolution runs |
+| `howler_hivemind` | Hive-mind consensus operations |
+| `howler_sync_push` | Push local data to remote |
+| `howler_sync_pull` | Pull remote data to local |
+
+## Skills (Slash Commands)
+
+| Skill | Purpose |
+|-------|---------|
+| `/howler-setup` | Initialize local environment (install, register MCP, create `.howler-agents/`) |
+| `/howler-evolve` | Start GEA evolution with hive-mind team |
+| `/howler-status` | Check run progress and agent rankings |
+| `/howler-memory` | Browse collective memory and lessons learned |
+| `/howler-sync` | Push/pull team sync between local SQLite and remote Postgres |
+
+## Agent Definitions
+
+| Agent | File | Role |
+|-------|------|------|
+| Coordinator | `.claude/agents/howler/coordinator.md` | Monitors evolution, coordinates team |
+| Evaluator | `.claude/agents/howler/evaluator.md` | Post-run quantitative analysis |
+| Reproducer | `.claude/agents/howler/reproducer.md` | Extracts lessons, seeds hive-mind |
+| Actor | `.claude/agents/howler/actor.md` | External task execution for coding-domain runs |
+
+## Behavioral Rules
+
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless they are absolutely necessary
+- ALWAYS prefer editing an existing file to creating a new one
+- NEVER proactively create documentation files unless explicitly requested
+- ALWAYS read a file before editing it
+- NEVER commit secrets, credentials, or .env files
+- ALWAYS run tests after making code changes
+
+## File Organization
+
+- `/packages/howler-agents-core/src/` for Python source code
+- `/packages/howler-agents-core/tests/` for Python tests
+- `/packages/howler-agents-service/` for FastAPI + gRPC service code
+- `/packages/howler-agents-ts/src/` for TypeScript SDK source
+- `/packages/howler-agents-ui/src/` for React dashboard source
+- `/docs/` for standalone documentation
+- `.claude/skills/` for skill definitions
+- `.claude/agents/` for agent definitions
+
+## Code Style
+
+- Python: ruff for linting/formatting, mypy for type checking
+- TypeScript: eslint + prettier, strict mode
+- Follow Domain-Driven Design with bounded contexts
+- Keep files under 500 lines
+- Use typed interfaces for all public APIs
+- Input validation at system boundaries
+
+## Key Dependencies
+
+- **LiteLLM**: BYOK LLM routing (replaces direct Anthropic/OpenAI clients)
+- **aiosqlite**: Local persistent storage
+- **pydantic v2**: Data validation and settings
+- **structlog**: Structured logging
+- **mcp**: Model Context Protocol server SDK
+- **scikit-learn**: KNN novelty computation
+- **numpy**: Capability vector operations
+
+## Common Issues & Fixes
+
+- **uv workspace deps**: Must add `[tool.uv.sources] howler-agents-core = { workspace = true }` in both root and service `pyproject.toml`
+- **pydantic-settings extra env vars**: Use `"extra": "ignore"` in `model_config` to skip unknown env vars from `.env`
+- **pytest conftest collision**: Two test dirs with `__init__.py` collide; remove `__init__.py`, put shared helpers in `_helpers.py` with `sys.path.insert` in conftest
+- **TanStack Start/vinxi**: Incompatible with TanStack Router v1.161+; use plain Vite SPA with `createRoute()` (not `createFileRoute()`)
+- **Badge variant types**: Must include `"secondary"` in Record type unions alongside `"default"`, `"success"`, `"warning"`, `"destructive"`
 
 ## Security Rules
 
@@ -60,129 +125,3 @@ npm run lint
 - NEVER commit .env files or any file containing secrets
 - Always validate user input at system boundaries
 - Always sanitize file paths to prevent directory traversal
-- Run `npx @claude-flow/cli@latest security scan` after security-related changes
-
-## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
-
-- All operations MUST be concurrent/parallel in a single message
-- Use Claude Code's Task tool for spawning agents, not just MCP
-- ALWAYS batch ALL todos in ONE TodoWrite call (5-10+ minimum)
-- ALWAYS spawn ALL agents in ONE message with full instructions via Task tool
-- ALWAYS batch ALL file reads/writes/edits in ONE message
-- ALWAYS batch ALL Bash commands in ONE message
-
-## Swarm Orchestration
-
-- MUST initialize the swarm using CLI tools when starting complex tasks
-- MUST spawn concurrent agents using Claude Code's Task tool
-- Never use CLI tools alone for execution — Task tool agents do the actual work
-- MUST call CLI tools AND Task tool in ONE message for complex work
-
-### 3-Tier Model Routing (ADR-026)
-
-| Tier | Handler | Latency | Cost | Use Cases |
-|------|---------|---------|------|-----------|
-| **1** | Agent Booster (WASM) | <1ms | $0 | Simple transforms (var→const, add types) — Skip LLM |
-| **2** | Haiku | ~500ms | $0.0002 | Simple tasks, low complexity (<30%) |
-| **3** | Sonnet/Opus | 2-5s | $0.003-0.015 | Complex reasoning, architecture, security (>30%) |
-
-- Always check for `[AGENT_BOOSTER_AVAILABLE]` or `[TASK_MODEL_RECOMMENDATION]` before spawning agents
-- Use Edit tool directly when `[AGENT_BOOSTER_AVAILABLE]`
-
-## Swarm Configuration & Anti-Drift
-
-- ALWAYS use hierarchical topology for coding swarms
-- Keep maxAgents at 6-8 for tight coordination
-- Use specialized strategy for clear role boundaries
-- Use `raft` consensus for hive-mind (leader maintains authoritative state)
-- Run frequent checkpoints via `post-task` hooks
-- Keep shared memory namespace for all agents
-
-```bash
-npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
-```
-
-## Swarm Execution Rules
-
-- ALWAYS use `run_in_background: true` for all agent Task calls
-- ALWAYS put ALL agent Task calls in ONE message for parallel execution
-- After spawning, STOP — do NOT add more tool calls or check status
-- Never poll TaskOutput or check swarm status — trust agents to return
-- When agent results arrive, review ALL results before proceeding
-
-## V3 CLI Commands
-
-### Core Commands
-
-| Command | Subcommands | Description |
-|---------|-------------|-------------|
-| `init` | 4 | Project initialization |
-| `agent` | 8 | Agent lifecycle management |
-| `swarm` | 6 | Multi-agent swarm coordination |
-| `memory` | 11 | AgentDB memory with HNSW search |
-| `task` | 6 | Task creation and lifecycle |
-| `session` | 7 | Session state management |
-| `hooks` | 17 | Self-learning hooks + 12 workers |
-| `hive-mind` | 6 | Byzantine fault-tolerant consensus |
-
-### Quick CLI Examples
-
-```bash
-npx @claude-flow/cli@latest init --wizard
-npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
-npx @claude-flow/cli@latest swarm init --v3-mode
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
-npx @claude-flow/cli@latest doctor --fix
-```
-
-## Available Agents (60+ Types)
-
-### Core Development
-`coder`, `reviewer`, `tester`, `planner`, `researcher`
-
-### Specialized
-`security-architect`, `security-auditor`, `memory-specialist`, `performance-engineer`
-
-### Swarm Coordination
-`hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`
-
-### GitHub & Repository
-`pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`
-
-### SPARC Methodology
-`sparc-coord`, `sparc-coder`, `specification`, `pseudocode`, `architecture`
-
-## Memory Commands Reference
-
-```bash
-# Store (REQUIRED: --key, --value; OPTIONAL: --namespace, --ttl, --tags)
-npx @claude-flow/cli@latest memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
-
-# Search (REQUIRED: --query; OPTIONAL: --namespace, --limit, --threshold)
-npx @claude-flow/cli@latest memory search --query "authentication patterns"
-
-# List (OPTIONAL: --namespace, --limit)
-npx @claude-flow/cli@latest memory list --namespace patterns --limit 10
-
-# Retrieve (REQUIRED: --key; OPTIONAL: --namespace)
-npx @claude-flow/cli@latest memory retrieve --key "pattern-auth" --namespace patterns
-```
-
-## Quick Setup
-
-```bash
-claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
-npx @claude-flow/cli@latest daemon start
-npx @claude-flow/cli@latest doctor --fix
-```
-
-## Claude Code vs CLI Tools
-
-- Claude Code's Task tool handles ALL execution: agents, file ops, code generation, git
-- CLI tools handle coordination via Bash: swarm init, memory, hooks, routing
-- NEVER use CLI tools as a substitute for Task tool agents
-
-## Support
-
-- Documentation: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues

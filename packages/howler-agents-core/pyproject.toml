@@ -28,10 +28,10 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "pytest-mock>=3.12", "coverage>=7.
 keywords = ["howler-agents", "gea", "agent-evolution", "llm", "multi-agent"]
 
 [project.urls]
-Homepage = "https://github.com/howler-agents/howler-agents"
-Repository = "https://github.com/howler-agents/howler-agents"
-Documentation = "https://howler-agents.github.io/howler-agents"
-"Bug Tracker" = "https://github.com/howler-agents/howler-agents/issues"
+Homepage = "https://github.com/jbeck018/howler-agents"
+Repository = "https://github.com/jbeck018/howler-agents"
+Documentation = "https://github.com/jbeck018/howler-agents"
+"Bug Tracker" = "https://github.com/jbeck018/howler-agents/issues"
 
 [build-system]
 requires = ["hatchling"]

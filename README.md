@@ -1,6 +1,6 @@
 # Howler Agents
 
-Open-source implementation of Group-Evolving Agents (GEA) for open-ended self-improvement via experience sharing.
+Open-source implementation of Group-Evolving Agents (GEA) for open-ended self-improvement via experience sharing. Runs locally with zero-config SQLite persistence, integrates with Claude Code and other AI coding tools via MCP.
 
 ## What is GEA?
 
@@ -29,32 +29,157 @@ GEA's best agent draws experience from 17 unique ancestors (28.3% of the populat
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.12+
-- Node.js 22+
-- Docker (for Postgres + Redis)
-
-### Setup
-
 ```bash
-git clone https://github.com/howler-agents/howler-agents.git
+git clone https://github.com/jbeck018/howler-agents.git
 cd howler-agents
-
-make setup && make docker-up && make dev
+pip install -e "packages/howler-agents-core[mcp]"
+claude mcp add howler-agents -- howler-agents serve --transport stdio
+# Restart Claude Code, then use: /howler-setup
 ```
 
-Copy `.env.example` to `.env` and fill in your LLM API keys before running.
+No Docker, no Postgres, no Redis required. Everything runs locally with SQLite.
+
+## Local Usage with Claude Code
+
+This is the primary way to use howler-agents. The MCP server runs inside your coding tool and persists all state to a local `.howler-agents/evolution.db` SQLite database in your repo root.
+
+### Install and register
+
+```bash
+# Install the core library with MCP dependencies
+pip install -e "packages/howler-agents-core[mcp]"
+
+# Register the MCP server with Claude Code
+claude mcp add howler-agents -- howler-agents serve --transport stdio
+
+# Restart Claude Code to pick up the new server
+```
+
+### Skills
+
+Once the MCP server is registered, these slash commands are available in Claude Code:
+
+| Skill | Description |
+|---|---|
+| `/howler-setup` | Initialize the local environment and verify the MCP connection |
+| `/howler-evolve` | Start a GEA evolution run with configurable parameters |
+| `/howler-status` | Check progress of a running or completed evolution run |
+| `/howler-memory` | Browse and manage persistent collective memory |
+| `/howler-sync` | Push/pull evolution data to a shared team database |
+
+### Example session
+
+```
+You: /howler-setup
+     => Initializes .howler-agents/ directory and SQLite DB
+
+You: /howler-evolve
+     => Starts evolution with 10 agents over 5 generations
+     => Returns a run_id for tracking
+
+You: /howler-status
+     => Shows generation progress, best score, population stats
+
+You: /howler-memory
+     => Browse lessons and decisions accumulated across runs
+```
+
+## MCP Server
+
+The MCP server supports three operating modes, selected automatically based on environment variables:
+
+| Mode | Config | Description |
+|---|---|---|
+| **local** | No env vars (default) | Zero-config SQLite persistence. Everything runs locally. |
+| **hybrid** | `HOWLER_API_URL` + `HOWLER_API_KEY` | SQLite locally + sync to a shared team database. |
+| **remote** | `HOWLER_API_URL` only | Full proxy to a remote howler-agents service. |
+
+### Transport options
+
+```bash
+# Stdio (for Claude Code, Cursor, OpenCode, Codex)
+howler-agents serve --transport stdio
+
+# SSE (for network/remote access)
+howler-agents serve --transport sse --port 8765
+```
+
+### MCP Tools
+
+The server exposes 11 tools:
+
+| Tool | Description |
+|---|---|
+| `howler_evolve` | Start an evolution run with configurable population, generations, domain, and model |
+| `howler_status` | Check run progress: generation, best score, population statistics |
+| `howler_list_agents` | List or rank agents in the current population by combined score |
+| `howler_configure` | Set LLM models for acting, evolving, and reflecting roles |
+| `howler_submit_experience` | Add a task experience trace to the shared experience pool |
+| `howler_get_experience` | Retrieve aggregated experience context for LLM consumption |
+| `howler_memory` | Hive-mind memory CRUD: store, retrieve, search, list, delete |
+| `howler_history` | Browse persistent evolution history: runs, agents, traces, stats |
+| `howler_hivemind` | Manage collective intelligence: status, seed from runs, export/import |
+| `howler_sync_push` | Push completed runs to the team database (hybrid mode) |
+| `howler_sync_pull` | Pull shared hive-mind memory from the team database (hybrid mode) |
+
+## Hive-Mind
+
+The hive-mind is a persistent collective intelligence layer built on top of the evolution engine. It accumulates knowledge across sessions and runs, stored in the local SQLite database.
+
+**Collective Memory** -- Namespace-organized key-value store with text search and access tracking. Memory entries persist across process restarts and Claude Code sessions.
+
+**Consensus Engine** -- Proposals are created automatically when lessons appear in three or more evolution traces. Proposals with confidence >= 0.6 are promoted to permanent collective memory under the `consensus` namespace.
+
+**Automatic Seeding** -- When an evolution run completes, the hive-mind coordinator extracts the top-scoring lessons and decisions from traces and stores them. High-frequency patterns are submitted as consensus proposals.
+
+**Team Sync** -- In hybrid mode, push local discoveries to a shared database and pull lessons from other developers' agents. Knowledge compounds across the team.
+
+## Architecture
+
+```
+                          ┌──────────────────────────────────────────┐
+                          │           AI Coding Tools                │
+                          │   Claude Code  |  Cursor  |  OpenCode   │
+                          └─────────────────────┬────────────────────┘
+                                                │
+                                     MCP (stdio or SSE)
+                                                │
+                          ┌─────────────────────▼────────────────────┐
+                          │           MCP Server (mcp_server.py)     │
+                          │   Tools + Resources + Lifespan mgmt      │
+                          └──────┬──────────────────┬────────────────┘
+                                 │                  │
+                   ┌─────────────▼──────┐  ┌───────▼─────────────────┐
+                   │   LocalRunner       │  │    Persistence Layer    │
+                   │   Evolution loops   │  │                         │
+                   │   Agent management  │  │  SQLite (.howler-agents │
+                   │   Experience pool   │  │  /evolution.db)         │
+                   └─────────┬──────────┘  │                         │
+                             │              │  Runs, agents, traces,  │
+                   ┌─────────▼──────────┐  │  memory, consensus      │
+                   │   Core Modules      │  └───────┬─────────────────┘
+                   │                     │          │
+                   │  AgentPool          │  ┌───────▼─────────────────┐
+                   │  PerformanceNovelty │  │    Hive-Mind Layer      │
+                   │    Selector         │  │                         │
+                   │  SharedExperience   │  │  CollectiveMemory       │
+                   │    Pool             │  │  ConsensusEngine        │
+                   │  GroupReproducer    │  │  HiveMindCoordinator    │
+                   │  ProbeEvaluator     │  │                         │
+                   │  LLMRouter          │  │  Optional: SyncClient   │
+                   └─────────────────────┘  │  (team DB push/pull)    │
+                                            └─────────────────────────┘
+```
 
 ## Monorepo Structure
 
 ```
 howler-agents/
 ├── packages/
-│   ├── howler-agents-core/       Python core library
-│   ├── howler-agents-service/    gRPC + REST service layer
-│   ├── howler-agents-ts/         TypeScript SDK
-│   ├── howler-agents-ui/         React dashboard
+│   ├── howler-agents-core/       Python core library + MCP server + CLI
+│   ├── howler-agents-service/    FastAPI + gRPC service layer
+│   ├── howler-agents-ts/         TypeScript SDK (@howler-agents/sdk)
+│   ├── howler-agents-ui/         React + Vite dashboard
 │   └── howler-agents-docs/       Documentation site
 ├── examples/
 │   ├── basic-python/             Minimal evolution example
@@ -62,75 +187,49 @@ howler-agents/
 │   ├── swe-bench/                SWE-bench benchmark reproduction
 │   └── polyglot/                 Polyglot benchmark reproduction
 ├── proto/                        Protobuf definitions (source of truth)
-├── migrations/                   SQL migration files
-├── deploy/docker/                Docker Compose configuration
-├── scripts/                      Build and generation scripts
-└── Makefile                      Top-level build commands
+├── .howler-agents/               Local SQLite persistence (auto-created, gitignored)
+└── .claude/skills/               Claude Code skill definitions
 ```
 
 ### Packages
 
 | Package | Language | Description |
 |---|---|---|
-| `howler-agents-core` | Python | Core GEA algorithm: agent pool, selection, experience sharing, evolution loop, LLM routing via LiteLLM |
-| `howler-agents-service` | Python | Stateless gRPC + REST service layer; meta-LLM reflection runs server-side |
+| `howler-agents-core` | Python | Core GEA algorithm, MCP server, CLI, local runner, hive-mind, SQLite persistence, LLM routing via LiteLLM |
+| `howler-agents-service` | Python | Stateless FastAPI + gRPC service layer; meta-LLM reflection runs server-side |
 | `howler-agents-ts` | TypeScript | `@howler-agents/sdk` -- thin gRPC/Connect client for Node.js and browsers |
 | `howler-agents-ui` | TypeScript | React + Vite dashboard for monitoring evolution runs in real time |
 | `howler-agents-docs` | TypeScript | Documentation site |
 
-## Architecture
+## Build Commands
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                      Language SDKs                            │
-│          Python  |  TypeScript  |  (future: Go, Rust, ...)    │
-└──────────────────────────┬────────────────────────────────────┘
-                           │
-                 gRPC (primary) / REST (fallback)
-                           │
-┌──────────────────────────▼────────────────────────────────────┐
-│                   howler-agents-service                        │
-│        FastAPI + gRPC gateway -- stateless, scalable          │
-│        Meta-LLM reflection runs here; API keys stay server    │
-└───────────┬──────────────────────────────┬────────────────────┘
-            │                              │
-┌───────────▼───────────┐    ┌─────────────▼────────────────────┐
-│  howler-agents-core   │    │       Experience Store            │
-│  Python library       │    │   Postgres + pgvector (durable)   │
-│  (pip installable)    │    │   Redis (hot cache)               │
-└───────────┬───────────┘    └──────────────────────────────────┘
-            │
-┌───────────▼───────────────────────────────────────────────────┐
-│                      Core Modules                             │
-│                                                               │
-│  AgentPool           -- manages the living population         │
-│  PerformanceNoveltySeletor -- balanced parent selection        │
-│  SharedExperiencePool -- aggregated group traces              │
-│  GroupReproducer      -- parent group -> child group via LLM  │
-│  ProbeEvaluator       -- builds binary capability vectors     │
-│  LLMRouter            -- role-based model dispatch            │
-└───────────────────────────────────────────────────────────────┘
+```bash
+# Install Python dependencies (from repo root)
+uv sync --all-extras --all-packages
+
+# Install Node dependencies
+pnpm install
+
+# Run Python tests (52 tests)
+uv run pytest -v
+
+# Run TypeScript SDK tests
+cd packages/howler-agents-ts && pnpm exec vitest run
+
+# Build the UI
+cd packages/howler-agents-ui && npx vite build
+
+# CLI usage
+howler-agents serve --transport stdio     # Start MCP server
+howler-agents evolve --domain coding      # Run evolution from CLI
+howler-agents status                      # Show run status
+howler-agents configure --show            # Show LLM config
 ```
 
 ## Documentation
 
 - [Architecture deep dive](./GEA_Architecture.md)
-- [Documentation site](https://howler-agents.github.io/howler-agents)
-- [API reference](https://howler-agents.github.io/howler-agents/api)
-
-## Build Commands
-
-```bash
-make setup          # Install Python (uv) and Node (pnpm) dependencies
-make dev            # Start service, UI, and docs in parallel
-make test           # Run all Python and Node tests
-make build          # Build all packages
-make lint           # Lint Python (ruff, mypy) and Node (eslint, tsc)
-make proto          # Regenerate protobuf stubs for all SDKs
-make docker-up      # Start Postgres + Redis via Docker Compose
-make docker-down    # Stop Docker services
-make clean          # Remove build artifacts and caches
-```
+- [GitHub repository](https://github.com/jbeck018/howler-agents)
 
 ## License
 
