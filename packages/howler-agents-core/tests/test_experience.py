@@ -58,7 +58,7 @@ async def test_group_context_with_traces(pool: SharedExperiencePool):
 @pytest.mark.asyncio
 async def test_memory_store_delete():
     store = InMemoryStore()
-    for i in range(5):
+    for _i in range(5):
         await store.save(
             EvolutionaryTrace(
                 agent_id="a1",

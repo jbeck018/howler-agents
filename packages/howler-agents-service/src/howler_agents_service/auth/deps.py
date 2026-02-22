@@ -22,8 +22,8 @@ async def _user_from_token(token: str, session: AsyncSession) -> CurrentUser:
     """Decode a Bearer JWT and return the CurrentUser."""
     try:
         payload = decode_token(token)
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
 
     if payload.get("type") != "access":
         raise HTTPException(status_code=401, detail="Not an access token")
@@ -31,8 +31,8 @@ async def _user_from_token(token: str, session: AsyncSession) -> CurrentUser:
     try:
         user_id = UUID(payload["sub"])
         org_id = UUID(payload["org"])
-    except (KeyError, ValueError):
-        raise HTTPException(status_code=401, detail="Malformed token payload")
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="Malformed token payload") from exc
 
     return CurrentUser(
         user_id=user_id,

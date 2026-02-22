@@ -102,9 +102,7 @@ class PostgresStore:
 
     @staticmethod
     def _row_to_trace(row: object) -> EvolutionaryTrace:
-        from collections.abc import Mapping
-
-        r = row if isinstance(row, Mapping) else row  # type: ignore[assignment]
+        r = row  # type: ignore[assignment]
         return EvolutionaryTrace(
             id=str(r["id"]),
             agent_id=str(r["agent_id"]),

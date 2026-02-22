@@ -6,7 +6,6 @@ import type {
   RunConfig,
   EvolutionRun,
   Agent,
-  AgentGroup,
   EvolutionaryTrace,
   EvolutionEvent,
 } from "./types.js";

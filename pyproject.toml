@@ -15,6 +15,9 @@ members = [
 [tool.uv.sources]
 howler-agents-core = { workspace = true }
 
+[dependency-groups]
+dev = ["ruff>=0.8", "mypy>=1.13"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
@@ -30,10 +33,16 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "SIM", # flake8-simplify
-    "TCH", # flake8-type-checking
     "RUF", # ruff-specific
 ]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B905",   # zip-without-explicit-strict
+    "SIM102", # collapsible-if
+    "SIM105", # suppressible-exception
+    "SIM108", # if-else-block-instead-of-if-exp
+    "UP042",  # replace-str-enum (StrEnum not backport-friendly)
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["howler_agents", "howler_agents_service"]

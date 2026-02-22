@@ -58,7 +58,7 @@ class Agent(ABC):
 
     def clone(self, new_id: str | None = None) -> AgentConfig:
         """Create a child config from this agent."""
-        new_lineage = [self.config.id] + list(self.config.lineage)
+        new_lineage = [self.config.id, *list(self.config.lineage)]
         return AgentConfig(
             id=new_id or str(uuid.uuid4()),
             generation=self.config.generation + 1,

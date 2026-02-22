@@ -23,7 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
-      - run: uv sync --all-packages
+      - run: uv sync --all-packages --group dev
       - name: Lint
         run: |
           uv run ruff check packages/
@@ -61,14 +61,18 @@ jobs:
         run: buf lint proto/
       - name: Generate proto
         run: |
-          if command -v buf &> /dev/null; then
+          if [ -f buf.gen.yaml ] || [ -f proto/buf.gen.yaml ]; then
             buf generate proto/
+          else
+            echo "No buf.gen.yaml found, skipping proto generation"
           fi
       - name: Check type drift
         run: |
-          if command -v buf &> /dev/null; then
+          if [ -f buf.gen.yaml ] || [ -f proto/buf.gen.yaml ]; then
             buf generate proto/
             git diff --exit-code
+          else
+            echo "No buf.gen.yaml found, skipping type drift check"
           fi
       - name: Check breaking changes
         run: buf breaking proto/ --against 'https://github.com/${{ github.repository }}.git#branch=main,subdir=proto'

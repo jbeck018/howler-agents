@@ -144,7 +144,7 @@ async def run_evolution_trial(
     np.random.seed(seed)
 
     pool = AgentPool()
-    for i in range(config.population_size):
+    for _i in range(config.population_size):
         pool.add(make_evolving_agent(skill=initial_skill, seed=rng.randint(0, 2**31)))
 
     store = InMemoryStore()

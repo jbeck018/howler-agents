@@ -144,8 +144,8 @@ async def refresh_token(request: RefreshRequest, repo: AuthRepoDep) -> TokenResp
     """Exchange a refresh token for a new access token."""
     try:
         payload = decode_token(request.refresh_token)
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token") from exc
 
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Not a refresh token")
@@ -153,8 +153,8 @@ async def refresh_token(request: RefreshRequest, repo: AuthRepoDep) -> TokenResp
     try:
         user_id = UUID(payload["sub"])
         _org_id = UUID(payload["org"])
-    except (KeyError, ValueError):
-        raise HTTPException(status_code=401, detail="Malformed token payload")
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="Malformed token payload") from exc
 
     _user = await repo.get_user_by_email("")  # we need user by id — fetch via member
     # fetch member to get current role

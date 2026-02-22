@@ -422,7 +422,9 @@ async def test_multi_generation_improvement_e2e():
     )
 
     # Verify at least 3 of 5 step-over-step transitions are non-decreasing
-    improvements = sum(1 for a, b in zip(gen_scores, gen_scores[1:]) if b >= a)
+    from itertools import pairwise
+
+    improvements = sum(1 for a, b in pairwise(gen_scores) if b >= a)
     assert improvements >= 2, f"Expected mostly non-decreasing scores, got {gen_scores}"
 
 

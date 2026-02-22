@@ -427,7 +427,7 @@ def _build_config(host: str, command: str) -> tuple[str, object] | None:
     if host == "opencode":
         return "opencode.json", {
             "mcp": {
-                "howler-agents": {"type": "local", "command": [command] + args, "enabled": True}
+                "howler-agents": {"type": "local", "command": [command, *args], "enabled": True}
             }
         }
 
