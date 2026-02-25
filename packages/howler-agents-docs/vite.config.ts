@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig({
-  base: "/docs-site/",
+  base: "/howler-agents/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

@@ -36,7 +36,7 @@ This is the "self-improving agent swarm" skill.
 
 ### Phase 1: Detect Orchestrator
 
-1. Check if claude-flow is available: look for `mcp__claude-flow__system_status` tool or run `which claude-flow`
+1. Check if claude-flow is available: run `which claude-flow` or check `howler_orchestrator_status` MCP tool
 2. If available, log: "Using claude-flow orchestration (preferred)"
 3. If not available, log: "Using local LLM orchestration (fallback)"
 4. Store the detection result for subsequent phases

@@ -15,11 +15,23 @@ Execute these steps in order:
 
 ### 1. Install howler-agents
 
+**Option A — npx (zero-config, recommended):**
+
+No install needed. The npm wrapper auto-installs the Python package on first use:
+
 ```bash
-pip install howler-agents-core
+npx howler-agents serve --transport stdio
 ```
 
-If installing from the local monorepo:
+**Option B — uv/pip (direct Python install):**
+
+```bash
+pip install 'howler-agents-core[mcp]'
+# or
+uv pip install 'howler-agents-core[mcp]'
+```
+
+**Option C — from local monorepo (development):**
 
 ```bash
 pip install -e /Users/jacob/projects/howler-agents/packages/howler-agents-core
@@ -27,15 +39,45 @@ pip install -e /Users/jacob/projects/howler-agents/packages/howler-agents-core
 
 ### 2. Register the MCP Server
 
-Add the howler-agents MCP server to Claude Code. The one-liner equivalent to `claude mcp add`:
+Use the built-in install command to register with your AI coding tool:
 
 ```bash
+# Auto-detect the host and register (npx mode — recommended):
+howler-agents install --command npx
+
+# Or specify the host explicitly:
+howler-agents install --host claude-code --command npx
+
+# Or with direct Python install:
+howler-agents install --host claude-code
+```
+
+Alternatively, manually add via `claude mcp add`:
+
+```bash
+# npx mode (no Python install needed):
+claude mcp add howler-agents -- npx howler-agents@latest serve --transport stdio
+
+# Direct Python mode:
 claude mcp add howler-agents -- howler-agents serve --transport stdio
 ```
 
 This registers the entry in `.mcp.json`. If `.mcp.json` already contains a `howler-agents` entry, skip this step.
 
-Verify the `.mcp.json` contains:
+Verify the `.mcp.json` contains one of:
+
+```json
+{
+  "mcpServers": {
+    "howler-agents": {
+      "command": "npx",
+      "args": ["howler-agents@latest", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+Or for direct Python installs:
 
 ```json
 {
@@ -105,11 +147,32 @@ After all steps complete, report:
 | Tool | Purpose |
 |------|---------|
 | `howler_evolve` | Start an evolution run |
+| `howler_auto_evolve` | One-shot evolution with auto-deployment |
 | `howler_status` | Check run progress |
-| `howler_list_agents` | List agents in a run |
-| `howler_submit_experience` | Submit task experience |
+| `howler_list_agents` | List/rank agents in a run |
+| `howler_submit_experience` | Submit task experience trace |
 | `howler_get_experience` | Retrieve collective experience |
 | `howler_configure` | Set model configuration |
+| `howler_memory` | Access hive-mind collective memory |
+| `howler_history` | Browse past evolution runs |
+| `howler_hivemind` | Hive-mind consensus operations |
+| `howler_deploy_agents` | Deploy top agents via orchestrator |
+| `howler_orchestrator_status` | Check orchestrator backend |
+| `howler_sync_push` | Push local data to remote |
+| `howler_sync_pull` | Pull remote data to local |
+
+## Available Skills After Setup
+
+| Skill | Purpose |
+|-------|---------|
+| `/howler-agents` | Best-first-pass solution: hive-mind + GEA evolution combined |
+| `/howler-agents-wiggam` | Iterative ralph-wiggum loop enhanced with hive-mind + GEA |
+| `/howler-init` | Analyze repo and seed hive-mind with architecture/convention intelligence |
+| `/howler-evolve` | Full GEA evolution run with team coordination |
+| `/howler-auto-evolve` | One-shot evolution with auto-deployment |
+| `/howler-status` | Check evolution run progress |
+| `/howler-memory` | Browse and search collective memory |
+| `/howler-sync` | Push/pull between local and remote storage |
 
 ## Troubleshooting
 
@@ -117,10 +180,11 @@ After all steps complete, report:
 - Check Python version: requires 3.11+
 - Check dependencies: `pip install 'howler-agents-core[mcp]'`
 - Check for port conflicts if using SSE transport
+- If using npx: ensure Node.js 18+ is installed
 
 ### Tools not visible
 - Restart Claude Code after modifying `.mcp.json`
-- Verify the command path: `which howler-agents`
+- Verify the command path: `which howler-agents` or `npx howler-agents --help`
 
 ### Database errors
 - Delete `.howler-agents/evolution.db` and re-run setup

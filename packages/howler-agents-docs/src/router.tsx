@@ -7,18 +7,20 @@ import { Route as sdkGuidesRoute } from "./routes/sdk-guides";
 import { Route as selfHostingRoute } from "./routes/self-hosting";
 import { Route as paperResultsRoute } from "./routes/paper-results";
 import { Route as integrationsRoute } from "./routes/integrations";
+import { Route as skillsRoute } from "./routes/skills";
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   architectureRoute,
   apiReferenceRoute,
   sdkGuidesRoute,
+  skillsRoute,
   selfHostingRoute,
   paperResultsRoute,
   integrationsRoute,
 ]);
 
-export const router = createRouter({ routeTree, basepath: "/docs-site" });
+export const router = createRouter({ routeTree, basepath: "/howler-agents" });
 
 declare module "@tanstack/react-router" {
   interface Register {

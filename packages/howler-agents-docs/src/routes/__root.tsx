@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
-import { Book, Code, Rocket, Server, Cpu, FlaskConical, Plug } from "lucide-react";
+import { Book, Code, Rocket, Server, Cpu, FlaskConical, Plug, Zap } from "lucide-react";
 import "../styles.css";
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { to: "/architecture", label: "Architecture", icon: Cpu },
   { to: "/api-reference", label: "API Reference", icon: Code },
   { to: "/sdk-guides", label: "SDK Guides", icon: Book },
+  { to: "/skills", label: "Skills", icon: Zap },
   { to: "/self-hosting", label: "Self-Hosting", icon: Server },
   { to: "/paper-results", label: "Paper Results", icon: FlaskConical },
   { to: "/integrations", label: "Integrations", icon: Plug },
