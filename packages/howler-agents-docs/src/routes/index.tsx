@@ -20,7 +20,36 @@ function GettingStartedPage() {
         paper's 71% target) and targets 88.3% on Polyglot benchmarks.
       </p>
 
-      <h2>Installation</h2>
+      <h2>Quick Start</h2>
+
+      <h3>Initialize any repo (recommended)</h3>
+      <pre><code>{`npx howler-agents init`}</code></pre>
+      <p>
+        This single command sets up everything you need: installs 9 Claude Code
+        skills (<code>/howler-agents</code>, <code>/howler-agents-wiggam</code>,{" "}
+        <code>/howler-init</code>, and more), 4 agent definitions, registers the
+        MCP server in <code>.mcp.json</code>, and creates the local{" "}
+        <code>.howler-agents/</code> directory. It is idempotent and safe to re-run.
+      </p>
+      <p>Then use the slash commands in Claude Code:</p>
+      <pre><code>{`/howler-init                           # Seed hive-mind with repo knowledge
+/howler-agents Fix the auth bug        # Solve a task with collective intelligence
+/howler-agents-wiggam Fix all tests \\
+  --completion-promise "ALL TESTS PASSING"  # Iterate until done`}</code></pre>
+
+      <h3>Init options</h3>
+      <table>
+        <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>--command</code></td><td><code>npx</code></td><td>MCP server command: <code>npx</code> (zero-install), <code>uvx</code> (Python), or <code>howler-agents</code> (direct)</td></tr>
+          <tr><td><code>--overwrite</code></td><td>off</td><td>Replace existing skill/agent files</td></tr>
+          <tr><td><code>--skip-skills</code></td><td>off</td><td>Skip installing Claude Code skills</td></tr>
+          <tr><td><code>--skip-agents</code></td><td>off</td><td>Skip installing agent definitions</td></tr>
+          <tr><td><code>--skip-mcp</code></td><td>off</td><td>Skip MCP server registration</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Alternative Installation</h2>
       <h3>Python (Core Library)</h3>
       <pre><code>{`pip install howler-agents-core`}</code></pre>
 
@@ -34,7 +63,7 @@ cp .env.example .env
 # Edit .env with your LLM API keys
 make docker-up`}</code></pre>
 
-      <h2>Quick Start</h2>
+      <h2>Programmatic Usage</h2>
       <h3>Python</h3>
       <pre><code>{`from howler_agents import HowlerConfig, EvolutionLoop
 

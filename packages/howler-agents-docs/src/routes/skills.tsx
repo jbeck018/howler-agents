@@ -18,12 +18,26 @@ function SkillsPage() {
         are invoked as slash commands in Claude Code.
       </p>
 
-      <h2>Setup</h2>
+      <h2>Installation</h2>
+      <p>
+        Run <code>npx howler-agents init</code> in any repository to install all 9
+        skills, 4 agent definitions, and register the MCP server automatically:
+      </p>
+      <pre><code>{`npx howler-agents init`}</code></pre>
+      <p>
+        This is idempotent (safe to re-run) and supports{" "}
+        <code>--overwrite</code> to update existing files. Use{" "}
+        <code>--command uvx</code> for Python-native setup or{" "}
+        <code>--command howler-agents</code> if the package is already installed.
+      </p>
+
+      <h2>Setup Skill</h2>
       <pre><code>{`/howler-setup`}</code></pre>
       <p>
-        Initializes the local environment: installs the package, registers the MCP server,
-        creates the <code>.howler-agents/</code> directory, and verifies connectivity.
-        Run this first before using any other howler skill.
+        Re-initializes the local environment: verifies the package is installed,
+        checks MCP server connectivity, and validates the{" "}
+        <code>.howler-agents/</code> directory. Use this to troubleshoot
+        or re-verify after <code>npx howler-agents init</code>.
       </p>
 
       <h2>Core Skills</h2>
