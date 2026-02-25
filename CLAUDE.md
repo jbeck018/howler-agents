@@ -57,7 +57,11 @@ cd packages/howler-agents-ui && npx vite build         # Build UI
 | Skill | Purpose |
 |-------|---------|
 | `/howler-setup` | Initialize local environment (install, register MCP, create `.howler-agents/`) |
+| `/howler-agents` | Best-first-pass solution: hive-mind collective intelligence + GEA evolution |
+| `/howler-agents-wiggam` | Iterative ralph-wiggum loop enhanced with hive-mind + GEA per iteration |
+| `/howler-init` | Analyze repo and seed hive-mind with architecture/convention intelligence |
 | `/howler-evolve` | Start GEA evolution with hive-mind team |
+| `/howler-auto-evolve` | One-shot evolution with auto-deployment |
 | `/howler-status` | Check run progress and agent rankings |
 | `/howler-memory` | Browse collective memory and lessons learned |
 | `/howler-sync` | Push/pull team sync between local SQLite and remote Postgres |

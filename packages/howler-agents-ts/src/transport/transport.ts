@@ -1,6 +1,9 @@
 /**
- * Transport factory for ConnectRPC.
- * Auto-detects browser vs Node.js environment.
+ * Transport configuration for Howler Agents SDK.
+ *
+ * The primary SDK client (HowlerAgentsClient) uses fetch-based REST.
+ * This module provides transport configuration that can be used with
+ * ConnectRPC when proto-generated stubs become available.
  */
 
 export interface TransportOptions {
@@ -8,9 +11,13 @@ export interface TransportOptions {
   apiKey?: string;
 }
 
-export function createTransport(options: TransportOptions) {
-  // In a real setup, this would use @connectrpc/connect-web or connect-node
-  // based on the environment. For now, return a config object.
+export interface TransportConfig {
+  baseUrl: string;
+  transport: "web" | "node";
+  headers: Record<string, string>;
+}
+
+export function createTransport(options: TransportOptions): TransportConfig {
   const isBrowser =
     typeof globalThis !== "undefined" &&
     typeof (globalThis as Record<string, unknown>).window !== "undefined";

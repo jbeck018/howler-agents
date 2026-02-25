@@ -8,6 +8,8 @@ importers:
 
   .: {}
 
+  packages/howler-agents-cli: {}
+
   packages/howler-agents-docs:
     dependencies:
       '@tanstack/react-router':

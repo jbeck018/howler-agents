@@ -57,6 +57,10 @@ packages/howler-agents-docs/.vinxi/
 # Howler Agents local DB
 .howler-agents/
 
+# SWE-bench Docker evaluation reports (local artifacts)
+howler-agents__*.json
+logs/
+
 # Claude local DB
 .claude/memory.db
 

@@ -178,6 +178,7 @@ class EvolutionaryTraceModel(Base):
     run_id = Column(
         UUID(as_uuid=True), ForeignKey("evolution_runs.id", ondelete="CASCADE"), nullable=False
     )
+    group_id = Column(Text, nullable=False, default="")
     generation = Column(Integer, nullable=False)
     task_description = Column(Text, nullable=False)
     outcome = Column(Text, nullable=False)

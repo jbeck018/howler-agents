@@ -2,3 +2,4 @@ packages:
   - "packages/howler-agents-ui"
   - "packages/howler-agents-ts"
   - "packages/howler-agents-docs"
+  - "packages/howler-agents-cli"

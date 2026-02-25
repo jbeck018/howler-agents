@@ -1,0 +1,35 @@
+{
+  "name": "howler-agents",
+  "version": "0.1.0",
+  "description": "Group-Evolving AI Agents - groups of AI agents evolve together by sharing experience across lineages",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "howler-agents": "bin/howler-agents.mjs"
+  },
+  "keywords": [
+    "howler-agents",
+    "gea",
+    "agent-evolution",
+    "llm",
+    "multi-agent",
+    "mcp",
+    "model-context-protocol",
+    "ai-agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jbeck018/howler-agents",
+    "directory": "packages/howler-agents-cli"
+  },
+  "homepage": "https://github.com/jbeck018/howler-agents",
+  "bugs": "https://github.com/jbeck018/howler-agents/issues",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "LICENSE",
+    "README.md"
+  ]
+}
