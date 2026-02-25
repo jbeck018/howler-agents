@@ -18,8 +18,8 @@ from howler_agents.benchmarks.swe_bench_harness import (
 from howler_agents.benchmarks.swe_bench_runner import (
     SWE_BENCH_PROBES,
     EvalReport,
-    SWEBenchEvalRunner,
     StepReport,
+    SWEBenchEvalRunner,
 )
 
 # --------------------------------------------------------------------------- #
@@ -256,7 +256,7 @@ class TestSWEBenchAgent:
         but only producing 4). Docker's patch(1) rejects these while git-apply
         is lenient. The fix recalculates counts from actual content.
         """
-        agent = SWEBenchAgent(config=AgentConfig(), llm=mock_llm)
+        SWEBenchAgent(config=AgentConfig(), llm=mock_llm)
         # This is the exact truncated patch that failed in cc-012 Docker eval
         bad_patch = (
             "diff --git a/astropy/io/fits/fitsrec.py b/astropy/io/fits/fitsrec.py\n"
@@ -324,7 +324,7 @@ class TestSWEBenchAgent:
         fixed = SWEBenchAgent._fix_corrupt_lines(patch)
         lines = fixed.splitlines()
         # The empty line should now be a single space
-        hunk_start = next(i for i, l in enumerate(lines) if l.startswith("@@"))
+        hunk_start = next(i for i, line in enumerate(lines) if line.startswith("@@"))
         assert lines[hunk_start + 2] == " "
 
     def test_fix_corrupt_lines_preserves_valid(self, mock_llm: MagicMock) -> None:
@@ -696,7 +696,7 @@ class TestParallelPredictions:
         harness.write_predictions = MagicMock()
 
         t0 = time.monotonic()
-        predictions, step = await runner._step_generate_predictions(
+        predictions, _step = await runner._step_generate_predictions(
             harness, instances, agent, "test-run"
         )
         elapsed = time.monotonic() - t0

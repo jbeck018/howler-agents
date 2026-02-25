@@ -639,7 +639,7 @@ class SWEBenchEvalRunner:
                         model_name_or_path=f"howler-agents/{run_id}",
                         model_patch=patch_output,
                     )
-                except _aio.TimeoutError:
+                except TimeoutError:
                     elapsed = time.monotonic() - inst_start
                     logger.warning(
                         "prediction_timeout",

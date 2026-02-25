@@ -496,7 +496,7 @@ class SWEBenchAgent(Agent):
         blocks: list[tuple[int, int]] = []
         matched_class_ranges: list[tuple[int, int]] = []  # track matched classes
 
-        for start, end, kind, name, indent in all_defs:
+        for start, end, kind, name, _indent in all_defs:
             name_lower = name.lower()
             name_matches = any(
                 kw == name_lower or name_lower in kw or kw in name_lower
@@ -521,7 +521,7 @@ class SWEBenchAgent(Agent):
 
         # Always include __init__ of classes that contain matched methods
         for cls_start, cls_end in matched_class_ranges:
-            for start, end, kind, name, indent in all_defs:
+            for start, end, _kind, name, _indent in all_defs:
                 if name == "__init__" and start > cls_start and start < cls_end:
                     blocks.append((max(0, start - 1), min(end, total - 1)))
                     break
@@ -564,7 +564,7 @@ class SWEBenchAgent(Agent):
             block_text = "\n".join(lines[start:end + 1])
             if char_count + len(block_text) > _MAX_PER_FILE:
                 # Budget exhausted — skip remaining blocks
-                parts.append(f"\n# ... (remaining blocks omitted, per-file cap reached) ...")
+                parts.append("\n# ... (remaining blocks omitted, per-file cap reached) ...")
                 break
             if start > import_end:
                 parts.append(f"\n# ... (lines {import_end + 1}-{start} omitted) ...\n")
@@ -622,7 +622,7 @@ class SWEBenchAgent(Agent):
         test_info = ""
         if fail_to_pass:
             test_info = (
-                f"## Tests That Must Pass After Fix\n"
+                "## Tests That Must Pass After Fix\n"
                 + "\n".join(f"- `{t}`" for t in fail_to_pass)
                 + "\n\nYour fix must make these tests pass.\n\n"
             )
