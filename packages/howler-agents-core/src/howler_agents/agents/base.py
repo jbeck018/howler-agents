@@ -79,3 +79,4 @@ class FrameworkPatch:
     intent: str = ""
     diff: str = ""
     category: str = "general"
+    config_updates: dict[str, Any] = field(default_factory=dict)

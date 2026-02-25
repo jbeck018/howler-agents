@@ -105,20 +105,15 @@ class ClaudeFlowOrchestrator(Orchestrator):
         task_id = task.get("id", str(uuid.uuid4()))
         start = time.monotonic()
 
-        # Execute via claude-flow terminal
+        # Execute via claude-flow task orchestration
         try:
             result = _cf_cli(
-                "terminal",
-                "execute",
-                "--command",
-                json.dumps(
-                    {
-                        "role": "agent",
-                        "prompt": agent.prompt,
-                        "task": description,
-                        "domain": agent.metadata.get("task_domain", "general"),
-                    }
-                ),
+                "task",
+                "create",
+                "--prompt",
+                f"{agent.prompt}\n\nTask: {description}",
+                "--id",
+                task_id,
             )
 
             elapsed = int((time.monotonic() - start) * 1000)

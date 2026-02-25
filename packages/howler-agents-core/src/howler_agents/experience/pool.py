@@ -29,7 +29,9 @@ class SharedExperiencePool:
         Returns a formatted string summarizing lessons learned, key decisions,
         and outcomes from the group's evolutionary history.
         """
-        traces = await self._store.get_by_run(run_id, limit=max_traces)
+        all_traces = await self._store.get_by_run(run_id, limit=max_traces * 3)
+        # Filter to this group's traces for proper group isolation
+        traces = [t for t in all_traces if t.group_id == group_id] or all_traces[:max_traces]
 
         if not traces:
             return "No prior experience available. This is the first generation."

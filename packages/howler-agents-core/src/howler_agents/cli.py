@@ -103,7 +103,7 @@ def serve(transport: str, port: int, host: str, api_url: str | None) -> None:
     "-d",
     default="general",
     show_default=True,
-    type=click.Choice(["general", "coding", "math", "writing"]),
+    type=click.Choice(["general", "coding", "math", "writing", "swe-bench"]),
     help="Task domain for the evolution run.",
 )
 @click.option(
@@ -396,49 +396,58 @@ def _detect_hosts() -> list[str]:
 
 def _build_config(host: str, command: str) -> tuple[str, object] | None:
     """Return (config_path_template, config_data) or None for manual-only hosts."""
-    args = ["serve", "--transport", "stdio"]
+    # Support npx-style invocation: command="npx" wraps args
+    if command == "npx":
+        cmd = "npx"
+        args = ["howler-agents@latest", "serve", "--transport", "stdio"]
+    elif command == "uvx":
+        cmd = "uvx"
+        args = ["--from", "howler-agents-core[mcp]", "howler-agents", "serve", "--transport", "stdio"]
+    else:
+        cmd = command
+        args = ["serve", "--transport", "stdio"]
 
     if host == "claude-code":
-        return ".mcp.json", {"mcpServers": {"howler-agents": {"command": command, "args": args}}}
+        return ".mcp.json", {"mcpServers": {"howler-agents": {"command": cmd, "args": args}}}
 
     if host == "codex":
         return "~/.codex/config.toml", None  # TOML handled separately
 
     if host == "gemini":
         return "~/.gemini/settings.json", {
-            "mcpServers": {"howler-agents": {"command": command, "args": args}}
+            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
         }
 
     if host == "cursor":
         return ".cursor/mcp.json", {
-            "mcpServers": {"howler-agents": {"command": command, "args": args}}
+            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
         }
 
     if host == "windsurf":
         return "~/.codeium/windsurf/mcp_config.json", {
-            "mcpServers": {"howler-agents": {"command": command, "args": args}}
+            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
         }
 
     if host == "vscode":
         return ".vscode/mcp.json", {
-            "servers": {"howler-agents": {"type": "stdio", "command": command, "args": args}}
+            "servers": {"howler-agents": {"type": "stdio", "command": cmd, "args": args}}
         }
 
     if host == "opencode":
         return "opencode.json", {
             "mcp": {
-                "howler-agents": {"type": "local", "command": [command, *args], "enabled": True}
+                "howler-agents": {"type": "local", "command": [cmd, *args], "enabled": True}
             }
         }
 
     if host == "amazon-q":
         return ".amazonq/mcp.json", {
-            "mcpServers": {"howler-agents": {"command": command, "args": args}}
+            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
         }
 
     if host == "jetbrains":
         return ".idea/mcp.json", {
-            "mcpServers": {"howler-agents": {"command": command, "args": args}}
+            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
         }
 
     return None
@@ -468,8 +477,16 @@ def _write_json_config(path: Path, patch: dict) -> None:
 
 def _write_codex_toml(path: Path, command: str) -> None:
     """Append or create the Codex TOML config snippet."""
-    args_str = '["serve", "--transport", "stdio"]'
-    snippet = f'\n[mcp_servers.howler-agents]\ncommand = "{command}"\nargs = {args_str}\n'
+    if command == "npx":
+        args_str = '["howler-agents@latest", "serve", "--transport", "stdio"]'
+        cmd = "npx"
+    elif command == "uvx":
+        args_str = '["--from", "howler-agents-core[mcp]", "howler-agents", "serve", "--transport", "stdio"]'
+        cmd = "uvx"
+    else:
+        args_str = '["serve", "--transport", "stdio"]'
+        cmd = command
+    snippet = f'\n[mcp_servers.howler-agents]\ncommand = "{cmd}"\nargs = {args_str}\n'
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text() if path.exists() else ""
     if "[mcp_servers.howler-agents]" in existing:
@@ -513,7 +530,7 @@ def _resolve_path(template: str, global_scope: bool) -> Path:
     "command",
     default="howler-agents",
     show_default=True,
-    help="Server command written into the config (override if installed under a different name).",
+    help="Server command: 'howler-agents' (direct), 'npx' (auto-install via npm), or 'uvx' (auto-install via uv).",
 )
 @click.option(
     "--global",
@@ -532,6 +549,14 @@ def install(host: str, command: str, global_scope: bool) -> None:
     \b
     Target a specific host:
         howler-agents install --host cursor
+
+    \b
+    Use npx for zero-install setup (recommended for teams):
+        howler-agents install --command npx
+
+    \b
+    Use uvx for Python-native auto-install:
+        howler-agents install --command uvx
 
     \b
     Configure all supported hosts at once:
@@ -576,6 +601,160 @@ def install(host: str, command: str, global_scope: bool) -> None:
             click.echo(f"  [{target}] Written to {dest}")
         except OSError as exc:
             click.echo(f"  [{target}] Failed to write {dest}: {exc}", err=True)
+
+
+# --------------------------------------------------------------------------- #
+# swe-bench                                                                    #
+# --------------------------------------------------------------------------- #
+
+
+@cli.command("swe-bench")
+@click.option(
+    "--dataset",
+    default="princeton-nlp/SWE-bench_Lite",
+    show_default=True,
+    help="HuggingFace dataset path.",
+)
+@click.option("--limit", "-n", default=5, show_default=True, help="Number of instances to evaluate.")
+@click.option(
+    "--model",
+    "-m",
+    default="auto",
+    show_default=True,
+    help="LLM backend: 'auto' detects local CLI (claude-code, codex, gemini-cli, opencode), or specify e.g. 'claude-code/sonnet', 'codex/default', or a LiteLLM model string.",
+)
+@click.option("--population", "-p", default=6, show_default=True, help="Population size (K) for evolution.")
+@click.option("--groups", "-g", default=2, show_default=True, help="Agents per group (M).")
+@click.option("--iterations", default=2, show_default=True, help="Evolution generations before eval.")
+@click.option("--alpha", "-a", default=0.7, show_default=True, help="Performance vs novelty balance.")
+@click.option(
+    "--skip-docker-eval",
+    is_flag=True,
+    default=False,
+    help="Skip Docker-based evaluation (just generate predictions).",
+)
+@click.option("--workspace", default=None, help="Directory for repos/predictions. Default: .howler-agents/swe-bench")
+@click.option("--run-id", default=None, help="Custom run ID.")
+@click.option("--instance-ids", default=None, help="Comma-separated instance IDs to evaluate.")
+@click.option("--json-output", is_flag=True, default=False, help="Output report as JSON.")
+@click.option("--check", is_flag=True, default=False, help="Only validate setup prerequisites.")
+@click.option("--max-concurrent", default=3, show_default=True, help="Max parallel prediction workers.")
+@click.option("--instance-timeout", default=300.0, show_default=True, help="Per-instance timeout in seconds.")
+@click.option("--skip-evolution", is_flag=True, default=False, help="Skip GEA evolution, use default agent directly.")
+def swe_bench(
+    dataset: str,
+    limit: int,
+    model: str,
+    population: int,
+    groups: int,
+    iterations: int,
+    alpha: float,
+    skip_docker_eval: bool,
+    skip_evolution: bool,
+    workspace: str | None,
+    run_id: str | None,
+    instance_ids: str | None,
+    json_output: bool,
+    check: bool,
+    max_concurrent: int,
+    instance_timeout: float,
+) -> None:
+    """Run SWE-Bench evaluation with GEA-evolved agents.
+
+    \b
+    Quick check that prerequisites are installed:
+        howler-agents swe-bench --check
+
+    \b
+    Evaluate on 5 instances with default settings:
+        howler-agents swe-bench --limit 5
+
+    \b
+    Full SWE-bench Lite run (300 instances):
+        howler-agents swe-bench --limit 0 --population 50 --iterations 60 --alpha 0.7
+
+    \b
+    Specific instances only:
+        howler-agents swe-bench --instance-ids sympy__sympy-20590,django__django-16379
+
+    \b
+    Generate predictions without Docker eval:
+        howler-agents swe-bench --skip-docker-eval --limit 10
+    """
+    from howler_agents.benchmarks.swe_bench_runner import SWEBenchEvalRunner
+
+    if check:
+        from howler_agents.benchmarks.swe_bench_harness import SWEBenchHarness
+
+        harness = SWEBenchHarness()
+        checks = harness.validate_setup()
+
+        if json_output:
+            click.echo(json.dumps(checks, indent=2))
+            return
+
+        click.echo("SWE-Bench Setup Check:")
+        for name, c in checks.items():
+            if name == "ready":
+                continue
+            ok = c.get("ok", False)
+            icon = "+" if ok else "-"
+            click.echo(f"  [{icon}] {name}")
+            if not ok and "fix" in c:
+                click.echo(f"      Fix: {c['fix']}")
+
+        if checks.get("ready"):
+            click.echo("\nAll checks passed. Ready to run SWE-bench evaluation.")
+        else:
+            click.echo("\nSome checks failed. Fix the issues above before running evaluation.")
+            sys.exit(1)
+        return
+
+    ids = [s.strip() for s in instance_ids.split(",")] if instance_ids else None
+    actual_limit = None if limit == 0 else limit
+
+    runner = SWEBenchEvalRunner(
+        model=model,
+        dataset=dataset,
+        workspace=workspace,
+        population_size=population,
+        group_size=groups,
+        num_iterations=0 if skip_evolution else iterations,
+        alpha=alpha,
+        skip_docker_eval=skip_docker_eval,
+        max_concurrent=max_concurrent,
+        instance_timeout_s=instance_timeout,
+    )
+
+    click.echo(f"SWE-Bench Evaluation: {dataset}", err=True)
+    click.echo(f"  Model:      {model}", err=True)
+    click.echo(f"  Population: {population}, Groups: {groups}", err=True)
+    click.echo(f"  Iterations: {iterations}, Alpha: {alpha}", err=True)
+    click.echo(f"  Parallel:   {max_concurrent}, Timeout: {instance_timeout}s", err=True)
+    click.echo(f"  Instances:  {actual_limit or 'all'}", err=True)
+    click.echo("", err=True)
+
+    async def _run() -> tuple[dict, str]:
+        report = await runner.run(
+            limit=actual_limit,
+            instance_ids=ids,
+            run_id=run_id,
+        )
+        return report.to_dict(), report.summary()
+
+    try:
+        result_dict, summary = asyncio.run(_run())
+    except KeyboardInterrupt:
+        click.echo("\nInterrupted.", err=True)
+        sys.exit(130)
+    except Exception as exc:
+        click.echo(f"Evaluation failed: {exc}", err=True)
+        sys.exit(1)
+
+    if json_output:
+        click.echo(json.dumps(result_dict, indent=2))
+    else:
+        click.echo(summary)
 
 
 if __name__ == "__main__":

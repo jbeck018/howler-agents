@@ -14,6 +14,7 @@ class EvolutionaryTrace:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     agent_id: str = ""
     run_id: str = ""
+    group_id: str = ""
     generation: int = 0
     task_description: str = ""
     outcome: str = ""

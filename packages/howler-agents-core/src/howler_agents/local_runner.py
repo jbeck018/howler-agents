@@ -303,6 +303,23 @@ class LocalRunner:
     def _build_domain_tasks(self, config: HowlerConfig) -> list[dict[str, Any]]:
         """Return a list of tasks appropriate for the configured domain."""
         domain = config.task_domain.lower()
+        # SWE-bench uses external task loading, not built-in tasks
+        if domain == "swe-bench":
+            return [
+                {
+                    "description": "Localize and fix a bug in a Python repository given an issue description.",
+                    "type": "swe-bench",
+                },
+                {
+                    "description": "Generate a unified diff patch that resolves a GitHub issue.",
+                    "type": "swe-bench",
+                },
+                {
+                    "description": "Read a traceback, identify the root cause, and produce a minimal fix.",
+                    "type": "swe-bench",
+                },
+            ]
+
         domain_tasks: dict[str, list[dict[str, Any]]] = {
             "coding": [
                 {
@@ -445,6 +462,18 @@ class LocalRunner:
             reproducer = GroupReproducer(llm=llm, experience_pool=experience, config=config)
             probe_evaluator = ProbeEvaluator(registry=probe_registry)
 
+            def _make_agent(cfg: AgentConfig) -> LLMBackedAgent:
+                return LLMBackedAgent(config=cfg, llm=llm, task_domain=config.task_domain)
+
+            async def _track_generation(event: str, data: dict[str, Any]) -> None:
+                """Hook to update run record as generations complete."""
+                if event == "generation_complete":
+                    record.current_generation = data.get("generation", 0) + 1
+                    best = data.get("best_score", 0.0)
+                    if best > record.best_score:
+                        record.best_score = best
+                        record.best_agent_id = data.get("best_agent_id")
+
             loop = EvolutionLoop(
                 config=config,
                 pool=record.pool,
@@ -452,6 +481,8 @@ class LocalRunner:
                 reproducer=reproducer,
                 experience=experience,
                 probe_evaluator=probe_evaluator,
+                agent_factory=_make_agent,
+                hooks=[_track_generation],
             )
 
             tasks = self._build_domain_tasks(config)
@@ -486,7 +517,7 @@ class LocalRunner:
                         run_id,
                     ),
                 )
-                await self._seed_hivemind(run_id)
+                await self.seed_hivemind(run_id)
 
             logger.info("run_completed", run_id=run_id, best_score=record.best_score)
             return result
@@ -509,7 +540,7 @@ class LocalRunner:
             logger.error("run_failed", run_id=run_id, error=str(exc))
             raise
 
-    async def _seed_hivemind(self, run_id: str) -> None:
+    async def seed_hivemind(self, run_id: str) -> None:
         """Seed hive-mind memory from a completed run's traces."""
         if self._db is None:
             return
@@ -589,7 +620,12 @@ class LocalRunner:
         if record is None:
             raise KeyError(f"Unknown run_id: {run_id}")
         if record.experience is None:
-            raise RuntimeError(f"Run {run_id} has not been initialized yet.")
+            # Hydrated runs lose their experience pool; recreate from store
+            if self._store is not None:
+                record.experience = SharedExperiencePool(self._store)
+            else:
+                store = InMemoryStore()
+                record.experience = SharedExperiencePool(store)
 
         trace = EvolutionaryTrace(
             agent_id=agent_id,

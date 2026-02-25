@@ -48,6 +48,7 @@ _runner = LocalRunner()
 _db: DatabaseManager | None = None
 _remote_api_url: str | None = os.environ.get("HOWLER_API_URL")
 _api_key: str | None = os.environ.get("HOWLER_API_KEY")
+_background_tasks: set[asyncio.Task[None]] = set()
 
 
 # Mode: "local" (SQLite only), "hybrid" (SQLite + sync), "remote" (full proxy)
@@ -140,7 +141,7 @@ TOOLS: list[types.Tool] = [
                 },
                 "task_domain": {
                     "type": "string",
-                    "description": "Domain for agent tasks: 'general', 'coding', 'math', 'writing'.",
+                    "description": "Domain for agent tasks: 'general', 'coding', 'math', 'writing', 'swe-bench'.",
                     "default": "general",
                 },
                 "model": {
@@ -555,10 +556,12 @@ async def _handle_howler_evolve(args: dict[str, Any]) -> list[types.TextContent]
     )
 
     # Launch the evolution in a background task so the MCP call returns quickly.
-    asyncio.get_event_loop().create_task(
+    task = asyncio.create_task(
         _execute_run_background(run_id),
         name=f"howler_run_{run_id}",
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     response = {
         "run_id": run_id,
@@ -1057,20 +1060,41 @@ async def _handle_howler_deploy_agents(arguments: dict[str, Any]) -> list[types.
         ]
 
     orchestrator_info = _runner.get_orchestrator_info()
+    orchestrator = _runner._orchestrator
+
+    deployed: list[dict[str, Any]] = []
+    for a in agents:
+        entry: dict[str, Any] = {
+            "agent_id": a["agent_id"],
+            "combined_score": a["combined_score"],
+            "generation": a["generation"],
+        }
+        if orchestrator is not None:
+            try:
+                prompt = (
+                    f"You are an evolved AI agent (gen {a['generation']}, "
+                    f"score {a['combined_score']:.3f}). "
+                    f"Execute tasks in the '{arguments.get('task_domain', 'general')}' domain."
+                )
+                spawned = await orchestrator.spawn_agent(
+                    prompt=prompt,
+                    task_domain=arguments.get("task_domain", "general"),
+                    agent_config={"howler_agent_id": a["agent_id"]},
+                )
+                entry["deployed_id"] = spawned.agent_id
+                entry["status"] = "deployed"
+            except Exception as exc:
+                entry["status"] = "deploy_failed"
+                entry["error"] = str(exc)
+        else:
+            entry["status"] = "listed"  # No orchestrator available
+        deployed.append(entry)
 
     result = {
         "run_id": run_id,
         "orchestrator": orchestrator_info["backend"],
-        "agents_deployed": len(agents),
-        "agents": [
-            {
-                "agent_id": a["agent_id"],
-                "combined_score": a["combined_score"],
-                "generation": a["generation"],
-                "status": "deployed",
-            }
-            for a in agents
-        ],
+        "agents_deployed": sum(1 for d in deployed if d.get("status") == "deployed"),
+        "agents": deployed,
     }
 
     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -1087,7 +1111,9 @@ async def _handle_howler_auto_evolve(args: dict[str, Any]) -> list[types.TextCon
     try:
         run_id = _runner.start_run(
             population_size=population_size,
+            group_size=int(args.get("group_size", 3)),
             num_iterations=num_iterations,
+            alpha=float(args.get("alpha", 0.5)),
             task_domain=task_domain,
             model=model,
         )

@@ -148,6 +148,7 @@ class GroupReproducer:
                 intent=data.get("intent", directive.intent),
                 diff=data.get("diff", ""),
                 category=data.get("category", "general"),
+                config_updates=data.get("config_updates", {}),
             )
         except (json.JSONDecodeError, TypeError):
             return FrameworkPatch(

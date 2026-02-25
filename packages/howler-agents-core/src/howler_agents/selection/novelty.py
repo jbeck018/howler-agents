@@ -44,4 +44,4 @@ class KNNNoveltyEstimator:
                 agent.novelty_score = float(normalized[vec_idx])
                 vec_idx += 1
             else:
-                agent.novelty_score = 0.0
+                agent.novelty_score = 1.0  # Novel by default (unknown capability)

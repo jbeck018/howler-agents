@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from howler_agents.agents.base import Agent
+from howler_agents.agents.base import Agent, AgentConfig, FrameworkPatch
 from howler_agents.agents.pool import AgentPool
 from howler_agents.config import HowlerConfig
 from howler_agents.evolution.reproducer import GroupReproducer
@@ -19,6 +19,7 @@ from howler_agents.selection.criterion import PerformanceNoveltySelector
 logger = structlog.get_logger()
 
 EvolutionHook = Callable[[str, dict[str, Any]], Awaitable[None]]
+AgentFactory = Callable[[AgentConfig], Agent]
 
 
 class EvolutionLoop:
@@ -40,6 +41,7 @@ class EvolutionLoop:
         reproducer: GroupReproducer,
         experience: SharedExperiencePool,
         probe_evaluator: ProbeEvaluator,
+        agent_factory: AgentFactory | None = None,
         hooks: list[EvolutionHook] | None = None,
     ) -> None:
         self._config = config
@@ -48,6 +50,7 @@ class EvolutionLoop:
         self._reproducer = reproducer
         self._experience = experience
         self._probes = probe_evaluator
+        self._agent_factory = agent_factory
         self._hooks: list[EvolutionHook] = hooks or []
 
     async def _fire_hook(self, event: str, data: dict[str, Any]) -> None:
@@ -57,6 +60,24 @@ class EvolutionLoop:
                 await hook(event, data)
             except Exception as exc:
                 logger.warning("hook_error", event=event, error=str(exc))
+
+    def _create_child(self, parent: Agent, patch: FrameworkPatch) -> Agent:
+        """Clone a parent agent and apply a mutation patch to the child."""
+        child_config = parent.clone()
+        if self._agent_factory is not None:
+            child = self._agent_factory(child_config)
+        else:
+            # Fallback: reuse parent's class via __class__ constructor
+            child = parent.__class__(child_config)  # type: ignore[call-arg]
+        # Apply patch to child (not parent); synchronous wrapper since we schedule later
+        child.patches.append(patch)
+        if patch.intent:
+            patches_list: list[str] = child.config.framework_config.get("applied_patches", [])
+            patches_list.append(patch.intent)
+            child.config.framework_config["applied_patches"] = patches_list
+        if patch.config_updates:
+            child.config.framework_config.update(patch.config_updates)
+        return child
 
     async def step(self, run_id: str, generation: int, tasks: list[dict]) -> dict:
         """Execute one generation of evolution.
@@ -79,6 +100,7 @@ class EvolutionLoop:
                 trace = EvolutionaryTrace(
                     agent_id=agent.id,
                     run_id=run_id,
+                    group_id=agent.config.group_id or "default",
                     generation=generation,
                     task_description=task.get("description", ""),
                     outcome="success" if result.success else "failure",
@@ -111,25 +133,23 @@ class EvolutionLoop:
             "selection_complete", {"generation": generation, "survivors": len(survivors)}
         )
 
-        # 4. Reproduce to fill population
+        # 4. Reproduce to fill population with cloned children
         new_agents: list[Agent] = list(survivors)
-        groups = self._pool.partition_groups(self._config.group_size)
-        group_map = {a.id: g[0].config.group_id or "default" for g in groups for a in g}
 
         while len(new_agents) < self._config.population_size:
             for parent in survivors:
                 if len(new_agents) >= self._config.population_size:
                     break
-                group_id = group_map.get(parent.id, "default")
+                group_id = parent.config.group_id or "default"
                 patch, _directive = await self._reproducer.reproduce(
                     parent=parent,
                     run_id=run_id,
                     group_id=group_id,
                     generation=generation,
                 )
-                await parent.apply_patch(patch)
-                # Count the patched parent as filling a slot toward population target
-                new_agents.append(parent)
+                # Create a new child agent from the parent's config
+                child = self._create_child(parent, patch)
+                new_agents.append(child)
 
         # 5. Update pool
         self._pool.replace_population(new_agents)

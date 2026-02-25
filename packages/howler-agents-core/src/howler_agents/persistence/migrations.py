@@ -6,7 +6,7 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _DDL_STATEMENTS = [
     # Schema version tracking
@@ -60,6 +60,7 @@ _DDL_STATEMENTS = [
         id                  TEXT PRIMARY KEY,
         agent_id            TEXT NOT NULL,
         run_id              TEXT NOT NULL REFERENCES runs(run_id),
+        group_id            TEXT NOT NULL DEFAULT '',
         generation          INTEGER NOT NULL DEFAULT 0,
         task_description    TEXT NOT NULL DEFAULT '',
         outcome             TEXT NOT NULL DEFAULT '',
@@ -112,6 +113,13 @@ _DDL_STATEMENTS = [
 ]
 
 
+_V2_MIGRATIONS = [
+    # Add group_id column to existing traces tables (no-op on fresh databases)
+    "ALTER TABLE traces ADD COLUMN group_id TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS idx_traces_group ON traces(run_id, group_id)",
+]
+
+
 async def run_migrations(db: object) -> None:  # db: DatabaseManager (avoid circular import)
     """Create tables and indexes, then record the schema version."""
     from howler_agents.persistence.db import DatabaseManager
@@ -121,13 +129,23 @@ async def run_migrations(db: object) -> None:  # db: DatabaseManager (avoid circ
     for statement in _DDL_STATEMENTS:
         await db.execute_write(statement.strip())
 
+    # Check current schema version
     rows = await db.execute(
-        "SELECT version FROM schema_version WHERE version = ?",
-        (SCHEMA_VERSION,),
+        "SELECT MAX(version) AS v FROM schema_version",
     )
-    if not rows:
+    current_version = rows[0]["v"] if rows and rows[0]["v"] is not None else 0
+
+    # Apply incremental migrations
+    if current_version < 2:
+        for stmt in _V2_MIGRATIONS:
+            try:
+                await db.execute_write(stmt)
+            except Exception:
+                pass  # Column already exists on fresh databases
+
+    if current_version < SCHEMA_VERSION:
         await db.execute_write(
-            "INSERT INTO schema_version (version) VALUES (?)",
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (SCHEMA_VERSION,),
         )
         log.info("migration_applied", version=SCHEMA_VERSION)

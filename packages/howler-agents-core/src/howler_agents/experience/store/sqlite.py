@@ -14,11 +14,11 @@ log = structlog.get_logger(__name__)
 
 _INSERT_SQL = """
     INSERT INTO traces (
-        id, agent_id, run_id, generation,
+        id, agent_id, run_id, group_id, generation,
         task_description, outcome, score,
         key_decisions, lessons_learned, patches_applied, parent_ids,
         recorded_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO NOTHING
 """
 
@@ -58,6 +58,7 @@ def _row_to_trace(row: dict) -> EvolutionaryTrace:
         id=row["id"],
         agent_id=row["agent_id"],
         run_id=row["run_id"],
+        group_id=row.get("group_id", ""),
         generation=row["generation"],
         task_description=row["task_description"],
         outcome=row["outcome"],
@@ -82,6 +83,7 @@ class SQLiteStore:
             trace.id,
             trace.agent_id,
             trace.run_id,
+            trace.group_id,
             trace.generation,
             trace.task_description,
             trace.outcome,
