@@ -69,7 +69,7 @@ warn_unused_configs = true
 packages = ["howler_agents", "howler_agents_service"]
 
 [[tool.mypy.overrides]]
-module = ["litellm.*", "sklearn.*", "grpc.*", "google.protobuf.*", "aiosqlite.*", "mcp.*"]
+module = ["litellm.*", "sklearn.*", "grpc.*", "google.protobuf.*", "aiosqlite.*", "mcp.*", "datasets.*", "swebench.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -92,6 +92,7 @@ module = [
     "howler_agents.persistence.*",
     "howler_agents.hivemind.*",
     "howler_agents.orchestration.*",
+    "howler_agents.benchmarks.*",
 ]
 # Pydantic aliases and dynamic store backends produce false positives
 disallow_any_generics = false

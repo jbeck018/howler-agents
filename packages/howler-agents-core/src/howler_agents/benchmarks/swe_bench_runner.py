@@ -112,7 +112,9 @@ class EvalReport:
 
         if self.final_results:
             lines.append("--- Final Results ---")
-            lines.append(f"  Resolved: {self.final_results.get('resolved', 0)}/{self.final_results.get('submitted', 0)}")
+            lines.append(
+                f"  Resolved: {self.final_results.get('resolved', 0)}/{self.final_results.get('submitted', 0)}"
+            )
             lines.append(f"  Rate:     {self.final_results.get('resolved_rate', 0):.1f}%")
 
         return "\n".join(lines)
@@ -120,14 +122,26 @@ class EvalReport:
 
 # Default SWE-bench probes for capability characterization
 SWE_BENCH_PROBES = [
-    {"description": "Localize the bug: given a traceback, identify the file and function", "type": "localization"},
+    {
+        "description": "Localize the bug: given a traceback, identify the file and function",
+        "type": "localization",
+    },
     {"description": "Read Python code and explain what a function does", "type": "comprehension"},
-    {"description": "Generate a minimal unified diff to fix an off-by-one error", "type": "patch_gen"},
-    {"description": "Identify which test would catch a specific type of bug", "type": "test_awareness"},
+    {
+        "description": "Generate a minimal unified diff to fix an off-by-one error",
+        "type": "patch_gen",
+    },
+    {
+        "description": "Identify which test would catch a specific type of bug",
+        "type": "test_awareness",
+    },
     {"description": "Fix a broken import statement in a Python module", "type": "import_fix"},
     {"description": "Resolve a merge conflict in a Python file", "type": "merge_conflict"},
     {"description": "Add a missing return statement to fix a function", "type": "missing_return"},
-    {"description": "Fix exception handling: catch the right exception type", "type": "exception_fix"},
+    {
+        "description": "Fix exception handling: catch the right exception type",
+        "type": "exception_fix",
+    },
     {"description": "Refactor: extract a method from a long function", "type": "refactoring"},
     {"description": "Fix a type annotation error in a dataclass", "type": "type_fix"},
     {"description": "Debug: find the variable shadowing bug", "type": "shadowing"},
@@ -264,16 +278,21 @@ class SWEBenchEvalRunner:
             best_agent, step = await self._step_evolve_agents(run_id, instances)
             report.steps.append(step)
         else:
-            report.steps.append(StepReport(
-                step="3. GEA Evolution (SKIPPED)",
-                status="skipped",
-                duration_s=0.0,
-                went_well=["Evolution skipped (--skip-evolution)"],
-            ))
+            report.steps.append(
+                StepReport(
+                    step="3. GEA Evolution (SKIPPED)",
+                    status="skipped",
+                    duration_s=0.0,
+                    went_well=["Evolution skipped (--skip-evolution)"],
+                )
+            )
 
         # Step 4: Generate predictions using evolved agent(s)
         predictions, step = await self._step_generate_predictions(
-            harness, instances, best_agent, run_id,
+            harness,
+            instances,
+            best_agent,
+            run_id,
         )
         report.steps.append(step)
 
@@ -422,7 +441,7 @@ class SWEBenchEvalRunner:
 
         # Register SWE-bench specific probes
         registry = ProbeRegistry()
-        for probe in SWE_BENCH_PROBES[:self._num_probes]:
+        for probe in SWE_BENCH_PROBES[: self._num_probes]:
             registry.register(probe)
         probe_evaluator = ProbeEvaluator(registry=registry)
 
@@ -451,7 +470,7 @@ class SWEBenchEvalRunner:
 
         # Build evolution tasks from first few SWE-bench instances
         # Use a subset for evolution training, save rest for evaluation
-        train_instances = instances[:max(3, len(instances) // 2)]
+        train_instances = instances[: max(3, len(instances) // 2)]
 
         # Checkout repos for training instances so agents can read code during evolution
         train_harness = SWEBenchHarness(
@@ -498,7 +517,9 @@ class SWEBenchEvalRunner:
             generations = result.get("generations", [])
             improvement = 0.0
 
-            went_well.append(f"Evolved {self._population_size} agents over {self._num_iterations} generations")
+            went_well.append(
+                f"Evolved {self._population_size} agents over {self._num_iterations} generations"
+            )
             went_well.append(f"Best combined score: {best_score:.3f}")
 
             if generations:
@@ -508,7 +529,9 @@ class SWEBenchEvalRunner:
                 if improvement > 0:
                     went_well.append(f"Mean score improved by {improvement:.3f} across generations")
                 else:
-                    went_wrong.append(f"Mean score did not improve ({first_score:.3f} -> {last_score:.3f})")
+                    went_wrong.append(
+                        f"Mean score did not improve ({first_score:.3f} -> {last_score:.3f})"
+                    )
                     suggestions.append("Try more iterations or adjust alpha for more exploration")
 
             # Get the best agent
@@ -516,7 +539,9 @@ class SWEBenchEvalRunner:
             best_agent = top_agents[0] if top_agents else None
 
             if best_agent and isinstance(best_agent, SWEBenchAgent):
-                went_well.append(f"Top agent (gen {best_agent.config.generation}): score={best_agent.combined_score:.3f}")
+                went_well.append(
+                    f"Top agent (gen {best_agent.config.generation}): score={best_agent.combined_score:.3f}"
+                )
                 return best_agent, StepReport(
                     step="3. GEA Evolution",
                     status="success",
@@ -610,7 +635,7 @@ class SWEBenchEvalRunner:
                 logger.info(
                     "generating_prediction",
                     instance_id=iid,
-                    progress=f"{idx+1}/{len(instances)}",
+                    progress=f"{idx + 1}/{len(instances)}",
                 )
                 try:
                     repo_dir = harness.checkout_repo(instance)
@@ -715,7 +740,9 @@ class SWEBenchEvalRunner:
                 "total_instances": len(instances),
                 "predictions": len(predictions),
                 "valid_patches": valid_patch_count,
-                "success_rate": f"{valid_patch_count/len(instances)*100:.1f}%" if instances else "0%",
+                "success_rate": f"{valid_patch_count / len(instances) * 100:.1f}%"
+                if instances
+                else "0%",
                 "timing": {k: round(v, 1) for k, v in timing_map.items()},
                 "max_concurrent": max_concurrent,
             },

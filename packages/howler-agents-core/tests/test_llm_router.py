@@ -208,8 +208,13 @@ class TestCLIRetry:
             proc.kill = AsyncMock()
             return proc
 
-        with patch("howler_agents.llm.claude_code.asyncio.create_subprocess_exec", side_effect=mock_exec), \
-             patch("howler_agents.llm.claude_code.asyncio.sleep", new_callable=AsyncMock):
+        with (
+            patch(
+                "howler_agents.llm.claude_code.asyncio.create_subprocess_exec",
+                side_effect=mock_exec,
+            ),
+            patch("howler_agents.llm.claude_code.asyncio.sleep", new_callable=AsyncMock),
+        ):
             with pytest.raises(RuntimeError, match="timed out"):
                 await cli_complete(
                     "claude-code/sonnet",
@@ -235,14 +240,17 @@ class TestCLIRetry:
                 proc.kill = AsyncMock()
             else:
                 # Second call succeeds
-                proc.communicate = AsyncMock(
-                    return_value=(b"fixed output", b"")
-                )
+                proc.communicate = AsyncMock(return_value=(b"fixed output", b""))
                 proc.returncode = 0
             return proc
 
-        with patch("howler_agents.llm.claude_code.asyncio.create_subprocess_exec", side_effect=mock_exec), \
-             patch("howler_agents.llm.claude_code.asyncio.sleep", new_callable=AsyncMock):
+        with (
+            patch(
+                "howler_agents.llm.claude_code.asyncio.create_subprocess_exec",
+                side_effect=mock_exec,
+            ),
+            patch("howler_agents.llm.claude_code.asyncio.sleep", new_callable=AsyncMock),
+        ):
             result = await cli_complete(
                 "claude-code/sonnet",
                 [{"role": "user", "content": "test"}],
@@ -265,7 +273,9 @@ class TestCLIRetry:
             proc.returncode = 0
             return proc
 
-        with patch("howler_agents.llm.claude_code.asyncio.create_subprocess_exec", side_effect=mock_exec):
+        with patch(
+            "howler_agents.llm.claude_code.asyncio.create_subprocess_exec", side_effect=mock_exec
+        ):
             result = await cli_complete(
                 "claude-code/sonnet",
                 [{"role": "user", "content": "test"}],
@@ -292,7 +302,9 @@ class TestCLIRetry:
             proc.returncode = 1
             return proc
 
-        with patch("howler_agents.llm.claude_code.asyncio.create_subprocess_exec", side_effect=mock_exec):
+        with patch(
+            "howler_agents.llm.claude_code.asyncio.create_subprocess_exec", side_effect=mock_exec
+        ):
             with pytest.raises(RuntimeError, match="API error"):
                 await cli_complete(
                     "claude-code/sonnet",
@@ -374,13 +386,17 @@ class TestSDKComplete:
     @pytest.mark.asyncio
     async def test_sdk_complete_timeout(self) -> None:
         """sdk_complete raises on timeout."""
+
         async def mock_query(*, prompt, options=None):
             import asyncio
+
             await asyncio.sleep(100)
             yield  # never reached
 
-        with patch("claude_agent_sdk.query", mock_query), \
-             pytest.raises(RuntimeError, match="timed out"):
+        with (
+            patch("claude_agent_sdk.query", mock_query),
+            pytest.raises(RuntimeError, match="timed out"),
+        ):
             await sdk_complete(
                 "claude-sdk/sonnet",
                 [{"role": "user", "content": "test"}],
@@ -407,8 +423,10 @@ class TestSDKComplete:
         async def mock_query(*, prompt, options=None):
             yield result_msg
 
-        with patch("claude_agent_sdk.query", mock_query), \
-             pytest.raises(RuntimeError, match="API error"):
+        with (
+            patch("claude_agent_sdk.query", mock_query),
+            pytest.raises(RuntimeError, match="API error"),
+        ):
             await sdk_complete(
                 "claude-sdk/sonnet",
                 [{"role": "user", "content": "test"}],
@@ -418,12 +436,15 @@ class TestSDKComplete:
     @pytest.mark.asyncio
     async def test_sdk_complete_no_result(self) -> None:
         """sdk_complete raises when no ResultMessage received."""
+
         async def mock_query(*, prompt, options=None):
             return
             yield  # makes this an async generator
 
-        with patch("claude_agent_sdk.query", mock_query), \
-             pytest.raises(RuntimeError, match="no result"):
+        with (
+            patch("claude_agent_sdk.query", mock_query),
+            pytest.raises(RuntimeError, match="no result"),
+        ):
             await sdk_complete(
                 "claude-sdk/sonnet",
                 [{"role": "user", "content": "test"}],
@@ -450,8 +471,10 @@ class TestSDKComplete:
         async def mock_query(*, prompt, options=None):
             yield result_msg
 
-        with patch("claude_agent_sdk.query", mock_query), \
-             pytest.raises(RuntimeError, match="returned error"):
+        with (
+            patch("claude_agent_sdk.query", mock_query),
+            pytest.raises(RuntimeError, match="returned error"),
+        ):
             await sdk_complete(
                 "claude-sdk/sonnet",
                 [{"role": "user", "content": "test"}],

@@ -119,6 +119,7 @@ class LLMRouter:
         # Rate limit spacing: ensure minimum interval between requests
         if self._min_interval > 0:
             import time
+
             now = time.monotonic()
             elapsed = now - self._last_request_time
             if elapsed < self._min_interval:

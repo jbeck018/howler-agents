@@ -110,7 +110,9 @@ class SWEBenchAgent(Agent):
 
             # Step 2: Read file contents
             file_contents = self._read_files(repo_dir, relevant_files)
-            decisions.append(f"Read {len(file_contents)} files ({sum(len(c) for c in file_contents.values())} chars)")
+            decisions.append(
+                f"Read {len(file_contents)} files ({sum(len(c) for c in file_contents.values())} chars)"
+            )
 
             # Step 2b: Read failing test code if available
             test_context = self._read_test_code(repo_dir, fail_to_pass)
@@ -118,7 +120,9 @@ class SWEBenchAgent(Agent):
                 decisions.append(f"Read {len(test_context)} chars of failing test code")
 
             # Step 3: Generate patch
-            patch = await self._generate_patch(problem, file_contents, repo, instance_id, fail_to_pass, test_context)
+            patch = await self._generate_patch(
+                problem, file_contents, repo, instance_id, fail_to_pass, test_context
+            )
 
             if not patch or patch.strip() == "":
                 return TaskResult(
@@ -164,8 +168,21 @@ class SWEBenchAgent(Agent):
         repo_structure = ""
         if repo_dir and repo_dir.exists():
             result = subprocess.run(
-                ["find", ".", "-name", "*.py", "-not", "-path", "./.git/*",
-                 "-not", "-path", "./.tox/*", "-not", "-path", "./build/*"],
+                [
+                    "find",
+                    ".",
+                    "-name",
+                    "*.py",
+                    "-not",
+                    "-path",
+                    "./.git/*",
+                    "-not",
+                    "-path",
+                    "./.tox/*",
+                    "-not",
+                    "-path",
+                    "./build/*",
+                ],
                 cwd=repo_dir,
                 capture_output=True,
                 text=True,
@@ -233,18 +250,61 @@ class SWEBenchAgent(Agent):
 
         # Extract meaningful keywords from problem (module names, class names, etc.)
         import re
+
         # Find words that look like Python identifiers (lowercase with underscores)
         words = set(re.findall(r"\b[a-z][a-z0-9_]{2,}\b", problem.lower()))
         # Find CamelCase names (class names)
         words.update(w.lower() for w in re.findall(r"\b[A-Z][a-zA-Z0-9]+\b", problem))
         # Remove very common words that would match too many files
         stop_words = {
-            "the", "and", "for", "that", "this", "with", "from", "not", "but",
-            "are", "was", "has", "have", "had", "been", "does", "did", "can",
-            "could", "should", "would", "when", "where", "how", "what", "which",
-            "def", "class", "return", "import", "none", "true", "false", "self",
-            "test", "tests", "error", "exception", "value", "result", "output",
-            "input", "file", "line", "code", "function", "method", "type",
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "from",
+            "not",
+            "but",
+            "are",
+            "was",
+            "has",
+            "have",
+            "had",
+            "been",
+            "does",
+            "did",
+            "can",
+            "could",
+            "should",
+            "would",
+            "when",
+            "where",
+            "how",
+            "what",
+            "which",
+            "def",
+            "class",
+            "return",
+            "import",
+            "none",
+            "true",
+            "false",
+            "self",
+            "test",
+            "tests",
+            "error",
+            "exception",
+            "value",
+            "result",
+            "output",
+            "input",
+            "file",
+            "line",
+            "code",
+            "function",
+            "method",
+            "type",
         }
         keywords = words - stop_words
 
@@ -303,7 +363,7 @@ class SWEBenchAgent(Agent):
                         extracted = self._focus_extract(text, keywords, fpath)
 
                     if total_chars + len(extracted) > _MAX_FILE_CONTEXT:
-                        extracted = extracted[:_MAX_FILE_CONTEXT - total_chars]
+                        extracted = extracted[: _MAX_FILE_CONTEXT - total_chars]
                     contents[fpath] = extracted
                     total_chars += len(extracted)
                 except Exception:
@@ -446,18 +506,59 @@ class SWEBenchAgent(Agent):
             keywords.update(match)
         # Remove noise
         noise = {
-            "the", "and", "for", "that", "this", "with", "from", "not", "but",
-            "are", "was", "has", "have", "had", "been", "does", "did", "can",
-            "could", "should", "would", "when", "where", "how", "what", "which",
-            "def", "class", "return", "import", "none", "true", "false", "self",
-            "error", "exception", "value", "result", "output", "input", "file",
-            "line", "code", "function", "method", "type", "name", "data", "new",
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "from",
+            "not",
+            "but",
+            "are",
+            "was",
+            "has",
+            "have",
+            "had",
+            "been",
+            "does",
+            "did",
+            "can",
+            "could",
+            "should",
+            "would",
+            "when",
+            "where",
+            "how",
+            "what",
+            "which",
+            "def",
+            "class",
+            "return",
+            "import",
+            "none",
+            "true",
+            "false",
+            "self",
+            "error",
+            "exception",
+            "value",
+            "result",
+            "output",
+            "input",
+            "file",
+            "line",
+            "code",
+            "function",
+            "method",
+            "type",
+            "name",
+            "data",
+            "new",
         }
         return keywords - noise
 
-    def _focus_extract(
-        self, text: str, keywords: set[str], fpath: str
-    ) -> str:
+    def _focus_extract(self, text: str, keywords: set[str], fpath: str) -> str:
         """Extract relevant code blocks from a large file.
 
         Uses a two-pass approach:
@@ -484,7 +585,9 @@ class SWEBenchAgent(Agent):
                     next_line = lines[end]
                     if next_line.strip() and not next_line[0].isspace() and indent == 0:
                         break  # top-level: next non-indented line
-                    if next_line.strip() and re.match(r"^(\s*)(class|def|async def)\s+\w+", next_line):
+                    if next_line.strip() and re.match(
+                        r"^(\s*)(class|def|async def)\s+\w+", next_line
+                    ):
                         next_indent = len(next_line) - len(next_line.lstrip())
                         if next_indent <= indent:
                             break
@@ -499,8 +602,7 @@ class SWEBenchAgent(Agent):
         for start, end, kind, name, _indent in all_defs:
             name_lower = name.lower()
             name_matches = any(
-                kw == name_lower or name_lower in kw or kw in name_lower
-                for kw in kw_lower
+                kw == name_lower or name_lower in kw or kw in name_lower for kw in kw_lower
             )
             if name_matches:
                 blocks.append((max(0, start - 2), min(end, total - 1)))
@@ -532,7 +634,9 @@ class SWEBenchAgent(Agent):
             tail_start = max(head, total - 30)
             excerpt = "\n".join(lines[:head])
             if tail_start > head:
-                excerpt += f"\n\n# ... ({total - head - (total - tail_start)} lines omitted) ...\n\n"
+                excerpt += (
+                    f"\n\n# ... ({total - head - (total - tail_start)} lines omitted) ...\n\n"
+                )
                 excerpt += "\n".join(lines[tail_start:])
             return excerpt
 
@@ -561,7 +665,7 @@ class SWEBenchAgent(Agent):
         char_count += len(header)
 
         for start, end in merged:
-            block_text = "\n".join(lines[start:end + 1])
+            block_text = "\n".join(lines[start : end + 1])
             if char_count + len(block_text) > _MAX_PER_FILE:
                 # Budget exhausted — skip remaining blocks
                 parts.append("\n# ... (remaining blocks omitted, per-file cap reached) ...")
@@ -691,14 +795,16 @@ class SWEBenchAgent(Agent):
                 logger.debug("patch_empty", instance_id=instance_id, attempt=attempt)
                 if attempt < _MAX_PATCH_RETRIES - 1:
                     messages.append({"role": "assistant", "content": response})
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            "Your response did not contain a valid unified diff. "
-                            "Output ONLY a diff starting with 'diff --git a/<path> b/<path>'. "
-                            "No explanations, no markdown fences."
-                        ),
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your response did not contain a valid unified diff. "
+                                "Output ONLY a diff starting with 'diff --git a/<path> b/<path>'. "
+                                "No explanations, no markdown fences."
+                            ),
+                        }
+                    )
                     continue
                 return ""
 
@@ -739,10 +845,7 @@ class SWEBenchAgent(Agent):
                         f"```\n{actual_context}\n```\n\n"
                         "Use these exact lines for context. "
                     )
-                retry_msg += (
-                    "Fix the patch and output ONLY the corrected diff. "
-                    "No explanations."
-                )
+                retry_msg += "Fix the patch and output ONLY the corrected diff. No explanations."
                 messages.append({"role": "user", "content": retry_msg})
             else:
                 # Last attempt — return the patch even if validation failed
@@ -874,7 +977,9 @@ class SWEBenchAgent(Agent):
             if in_fence:
                 fence_lines.append(line)
 
-        if fence_lines and any(ln.startswith("diff --git") or ln.startswith("---") for ln in fence_lines):
+        if fence_lines and any(
+            ln.startswith("diff --git") or ln.startswith("---") for ln in fence_lines
+        ):
             raw = "\n".join(fence_lines) + "\n"
             return self._fix_hunk_headers(self._fix_corrupt_lines(raw))
 
@@ -970,7 +1075,9 @@ class SWEBenchAgent(Agent):
             old_start = int(hunk_header_match.group(1))
             new_start = int(hunk_header_match.group(3))
             tail = hunk_header_match.group(5)
-            output_lines[hunk_header_idx] = f"@@ -{old_start},{old_count} +{new_start},{new_count} @@{tail}"
+            output_lines[hunk_header_idx] = (
+                f"@@ -{old_start},{old_count} +{new_start},{new_count} @@{tail}"
+            )
             output_lines.extend(hunk_body)
             hunk_body = []
             hunk_header_match = None
@@ -1025,13 +1132,17 @@ class SWEBenchAgent(Agent):
             lessons.append(f"Successfully generated patch modifying {file_count} file(s)")
         else:
             if not patch:
-                lessons.append("Failed to extract diff from LLM response — improve output format instructions")
+                lessons.append(
+                    "Failed to extract diff from LLM response — improve output format instructions"
+                )
             elif "diff --git" not in patch:
                 lessons.append("Patch missing diff headers — enforce unified diff format")
             elif "@@" not in patch:
                 lessons.append("Patch missing hunk markers — ensure complete diff output")
             else:
-                lessons.append("Patch format ok but git apply failed — check line numbers and context")
+                lessons.append(
+                    "Patch format ok but git apply failed — check line numbers and context"
+                )
         return lessons
 
     async def apply_patch(self, patch: FrameworkPatch) -> None:

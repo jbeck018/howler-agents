@@ -111,7 +111,10 @@ class TestSWEBenchAgent:
 
     @pytest.mark.asyncio
     async def test_run_task_generates_patch(
-        self, mock_llm: MagicMock, sample_instance: SWEBenchInstance, tmp_path: Path,
+        self,
+        mock_llm: MagicMock,
+        sample_instance: SWEBenchInstance,
+        tmp_path: Path,
     ) -> None:
         # Mock the localization response
         mock_llm.complete = AsyncMock(
@@ -137,12 +140,14 @@ class TestSWEBenchAgent:
         (repo_dir / "src" / "bar.py").write_text("# bar module\n")
 
         agent = SWEBenchAgent(config=AgentConfig(), llm=mock_llm)
-        result = await agent.run_task({
-            "instance_id": sample_instance.instance_id,
-            "problem_statement": sample_instance.problem_statement,
-            "repo": sample_instance.repo,
-            "repo_dir": repo_dir,
-        })
+        result = await agent.run_task(
+            {
+                "instance_id": sample_instance.instance_id,
+                "problem_statement": sample_instance.problem_statement,
+                "repo": sample_instance.repo,
+                "repo_dir": repo_dir,
+            }
+        )
 
         assert result.output != ""
         assert "diff --git" in result.output
@@ -163,28 +168,32 @@ class TestSWEBenchAgent:
     @pytest.mark.asyncio
     async def test_patch_retry_on_empty(self, mock_llm: MagicMock) -> None:
         """Validation retry should re-prompt when the first response has no diff."""
-        mock_llm.complete = AsyncMock(side_effect=[
-            # Localization
-            "./src/foo.py",
-            # Attempt 1: garbage response (no diff)
-            "I think the fix is to change line 5.",
-            # Attempt 2: valid diff
-            "diff --git a/src/foo.py b/src/foo.py\n"
-            "--- a/src/foo.py\n"
-            "+++ b/src/foo.py\n"
-            "@@ -1,2 +1,2 @@\n"
-            " def foo(bar=False):\n"
-            "-    return None\n"
-            "+    return 42 if bar else None\n",
-        ])
+        mock_llm.complete = AsyncMock(
+            side_effect=[
+                # Localization
+                "./src/foo.py",
+                # Attempt 1: garbage response (no diff)
+                "I think the fix is to change line 5.",
+                # Attempt 2: valid diff
+                "diff --git a/src/foo.py b/src/foo.py\n"
+                "--- a/src/foo.py\n"
+                "+++ b/src/foo.py\n"
+                "@@ -1,2 +1,2 @@\n"
+                " def foo(bar=False):\n"
+                "-    return None\n"
+                "+    return 42 if bar else None\n",
+            ]
+        )
 
         agent = SWEBenchAgent(config=AgentConfig(), llm=mock_llm)
-        result = await agent.run_task({
-            "instance_id": "test__repo-retry",
-            "problem_statement": "foo returns None instead of 42",
-            "repo": "test/repo",
-            "repo_dir": None,
-        })
+        result = await agent.run_task(
+            {
+                "instance_id": "test__repo-retry",
+                "problem_statement": "foo returns None instead of 42",
+                "repo": "test/repo",
+                "repo_dir": None,
+            }
+        )
 
         assert result.output != ""
         assert "diff --git" in result.output
@@ -219,16 +228,13 @@ class TestSWEBenchAgent:
     def test_extract_diff_json_wrapped(self, mock_llm: MagicMock) -> None:
         """Test extraction from JSON-wrapped output (Claude Code --output-format json)."""
         agent = SWEBenchAgent(config=AgentConfig(), llm=mock_llm)
-        response = json.dumps({
-            "result": (
-                "diff --git a/f.py b/f.py\n"
-                "--- a/f.py\n"
-                "+++ b/f.py\n"
-                "@@ -1 +1 @@\n"
-                "-old\n"
-                "+new\n"
-            )
-        })
+        response = json.dumps(
+            {
+                "result": (
+                    "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n@@ -1 +1 @@\n-old\n+new\n"
+                )
+            }
+        )
         diff = agent._extract_diff(response)
         assert "diff --git" in diff
         assert "+new" in diff
@@ -354,9 +360,7 @@ class TestSWEBenchAgent:
             "    def test_baz(self):\n"
             "        assert 2 + 2 == 4\n"
         )
-        result = SWEBenchAgent._read_test_code(
-            tmp_path, ["tests/test_foo.py::TestFoo::test_bar"]
-        )
+        result = SWEBenchAgent._read_test_code(tmp_path, ["tests/test_foo.py::TestFoo::test_bar"])
         assert "test_bar" in result
         assert "assert 1 + 1 == 2" in result
         # Should NOT include test_baz
@@ -383,7 +387,9 @@ class TestSWEBenchAgent:
         files.sort()
 
         result = agent._keyword_filter_files(
-            files, "The CompoundModel in modeling returns wrong results", max_files=20,
+            files,
+            "The CompoundModel in modeling returns wrong results",
+            max_files=20,
         )
         # Matching files should be included
         assert "./pkg/modeling/core.py" in result
@@ -433,6 +439,7 @@ class TestSWEBenchAgent:
         result = agent._focus_extract(text, keywords, "./huge.py")
         # Result should be capped at _MAX_PER_FILE (10K)
         from howler_agents.benchmarks.swe_bench_agent import _MAX_PER_FILE
+
         assert len(result) <= _MAX_PER_FILE + 500  # small tolerance for markers
         # Should have cap marker
         assert "per-file cap reached" in result
@@ -460,7 +467,12 @@ class TestSWEBenchAgent:
         # Create a large file (>5K chars) with relevant and irrelevant content
         big_lines = ["import ast", ""]
         big_lines.append("class Unrelated:")
-        big_lines.extend([f"    attr_{i} = 'value_{i}_padding_extra_text_to_exceed_threshold'" for i in range(300)])
+        big_lines.extend(
+            [
+                f"    attr_{i} = 'value_{i}_padding_extra_text_to_exceed_threshold'"
+                for i in range(300)
+            ]
+        )
         big_lines.append("")
         big_lines.append("class RstWriter:")
         big_lines.append("    def write(self, data):")
@@ -616,7 +628,9 @@ class TestParallelPredictions:
         )
 
         mock_llm = MagicMock()
-        mock_llm.complete = AsyncMock(return_value="diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n@@ -1 +1 @@\n-old\n+new\n")
+        mock_llm.complete = AsyncMock(
+            return_value="diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n@@ -1 +1 @@\n-old\n+new\n"
+        )
         agent = SWEBenchAgent(config=AgentConfig(), llm=mock_llm)
 
         harness = MagicMock()

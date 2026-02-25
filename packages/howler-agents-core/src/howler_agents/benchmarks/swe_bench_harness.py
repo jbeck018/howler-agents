@@ -72,7 +72,9 @@ class SWEBenchHarness:
     ) -> None:
         self._dataset = dataset
         self._split = split
-        self._workspace = Path(workspace) if workspace else Path(tempfile.mkdtemp(prefix="howler-swe-"))
+        self._workspace = (
+            Path(workspace) if workspace else Path(tempfile.mkdtemp(prefix="howler-swe-"))
+        )
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._instances: list[SWEBenchInstance] = []
 
@@ -121,8 +123,12 @@ class SWEBenchHarness:
                 problem_statement=item["problem_statement"],
                 patch=item.get("patch", ""),
                 test_patch=item.get("test_patch", ""),
-                fail_to_pass=json.loads(fail_to_pass) if isinstance(fail_to_pass, str) else fail_to_pass,
-                pass_to_pass=json.loads(pass_to_pass) if isinstance(pass_to_pass, str) else pass_to_pass,
+                fail_to_pass=json.loads(fail_to_pass)
+                if isinstance(fail_to_pass, str)
+                else fail_to_pass,
+                pass_to_pass=json.loads(pass_to_pass)
+                if isinstance(pass_to_pass, str)
+                else pass_to_pass,
                 version=item.get("version", ""),
             )
             instances.append(instance)
@@ -248,11 +254,17 @@ class SWEBenchHarness:
             - per_instance: list of per-instance results
         """
         cmd = [
-            "python", "-m", "swebench.harness.run_evaluation",
-            "--dataset_name", self._dataset,
-            "--predictions_path", str(predictions_path),
-            "--max_workers", str(max_workers),
-            "--run_id", run_id,
+            "python",
+            "-m",
+            "swebench.harness.run_evaluation",
+            "--dataset_name",
+            self._dataset,
+            "--predictions_path",
+            str(predictions_path),
+            "--max_workers",
+            str(max_workers),
+            "--run_id",
+            run_id,
         ]
 
         if namespace is not None:
@@ -260,6 +272,7 @@ class SWEBenchHarness:
 
         # On Apple Silicon, use empty namespace for local builds
         import platform
+
         if platform.machine() == "arm64" and namespace is None:
             cmd.extend(["--namespace", ""])
 
@@ -310,11 +323,13 @@ class SWEBenchHarness:
         resolved_ids = set(raw.get("resolved", []))
 
         for inst in self._instances:
-            per_instance.append({
-                "instance_id": inst.instance_id,
-                "resolved": inst.instance_id in resolved_ids,
-                "repo": inst.repo,
-            })
+            per_instance.append(
+                {
+                    "instance_id": inst.instance_id,
+                    "resolved": inst.instance_id in resolved_ids,
+                    "repo": inst.repo,
+                }
+            )
 
         total = raw.get("total", len(self._instances))
         submitted = raw.get("submitted", 0)
@@ -338,6 +353,7 @@ class SWEBenchHarness:
         # 1. Check datasets package
         try:
             import datasets  # noqa: F401
+
             checks["datasets_package"] = {"ok": True}
         except ImportError:
             checks["datasets_package"] = {"ok": False, "fix": "pip install datasets"}
@@ -345,6 +361,7 @@ class SWEBenchHarness:
         # 2. Check swebench package
         try:
             import swebench  # noqa: F401
+
             checks["swebench_package"] = {"ok": True}
         except ImportError:
             checks["swebench_package"] = {"ok": False, "fix": "pip install swebench"}
@@ -372,6 +389,7 @@ class SWEBenchHarness:
 
         # 5. Check disk space
         import shutil
+
         _total, _used, free = shutil.disk_usage(self._workspace)
         free_gb = free / (1024**3)
         checks["disk_space"] = {

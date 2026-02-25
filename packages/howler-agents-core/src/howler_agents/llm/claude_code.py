@@ -30,18 +30,19 @@ logger = structlog.get_logger()
 # Environment variables that must be REMOVED (not just emptied) when
 # spawning Claude Code as a subprocess. These cause silent exit code 1.
 _ENV_VARS_TO_REMOVE = {
-    "CLAUDECODE",                  # Nested execution detection
-    "CLAUDE_CODE_ENTRYPOINT",      # SDK entrypoint marker
-    "ANTHROPIC_MODEL",             # Forces API billing instead of subscription
-    "ANTHROPIC_API_KEY",           # Forces API billing instead of subscription
-    "NODE_OPTIONS",                # VSCode debugger injection
-    "VSCODE_INSPECTOR_OPTIONS",    # VSCode inspector
+    "CLAUDECODE",  # Nested execution detection
+    "CLAUDE_CODE_ENTRYPOINT",  # SDK entrypoint marker
+    "ANTHROPIC_MODEL",  # Forces API billing instead of subscription
+    "ANTHROPIC_API_KEY",  # Forces API billing instead of subscription
+    "NODE_OPTIONS",  # VSCode debugger injection
+    "VSCODE_INSPECTOR_OPTIONS",  # VSCode inspector
 }
 
 
 # ---------------------------------------------------------------------------
 # Backend registry
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class CLIBackend:
@@ -95,8 +96,11 @@ class ClaudeCodeBackend(CLIBackend):
     def build_cmd(self, prompt: str, model_suffix: str) -> list[str]:
         model = _CLAUDE_ALIASES.get(model_suffix, model_suffix)
         return [
-            "claude", "-p", prompt,
-            "--model", model,
+            "claude",
+            "-p",
+            prompt,
+            "--model",
+            model,
             "--dangerously-skip-permissions",
             "--no-session-persistence",
         ]
@@ -105,8 +109,10 @@ class ClaudeCodeBackend(CLIBackend):
         """Pipe prompt via stdin: cat file | claude -p "query"."""
         model = _CLAUDE_ALIASES.get(model_suffix, model_suffix)
         return [
-            "claude", "-p",
-            "--model", model,
+            "claude",
+            "-p",
+            "--model",
+            model,
             "--dangerously-skip-permissions",
             "--no-session-persistence",
         ]
@@ -154,6 +160,7 @@ class OpenCodeBackend(CLIBackend):
 # ---------------------------------------------------------------------------
 # Claude Agent SDK backend
 # ---------------------------------------------------------------------------
+
 
 class ClaudeSDKBackend(CLIBackend):
     """Claude Agent SDK: uses query() for structured, subscription-auth calls.
@@ -335,6 +342,7 @@ _SDK_BACKENDS = {"claude-sdk"}
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def is_cli_model(model: str) -> bool:
     """Check if a model string targets a local CLI backend."""
@@ -542,9 +550,7 @@ async def _cli_exec_once(
             # Check for API error responses — these should NOT be treated
             # as valid content since they contain error messages, not patches.
             if content and _is_api_error(content):
-                raise _CLIProcessError(
-                    f"{backend.binary} API error: {content[:200]}"
-                )
+                raise _CLIProcessError(f"{backend.binary} API error: {content[:200]}")
             # If there's content despite non-zero exit, return it anyway
             # (the CLI may return useful partial output with rc=1)
             if content:

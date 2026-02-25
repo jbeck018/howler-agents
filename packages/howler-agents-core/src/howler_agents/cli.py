@@ -402,7 +402,14 @@ def _build_config(host: str, command: str) -> tuple[str, object] | None:
         args = ["howler-agents@latest", "serve", "--transport", "stdio"]
     elif command == "uvx":
         cmd = "uvx"
-        args = ["--from", "howler-agents-core[mcp]", "howler-agents", "serve", "--transport", "stdio"]
+        args = [
+            "--from",
+            "howler-agents-core[mcp]",
+            "howler-agents",
+            "serve",
+            "--transport",
+            "stdio",
+        ]
     else:
         cmd = command
         args = ["serve", "--transport", "stdio"]
@@ -419,9 +426,7 @@ def _build_config(host: str, command: str) -> tuple[str, object] | None:
         }
 
     if host == "cursor":
-        return ".cursor/mcp.json", {
-            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
-        }
+        return ".cursor/mcp.json", {"mcpServers": {"howler-agents": {"command": cmd, "args": args}}}
 
     if host == "windsurf":
         return "~/.codeium/windsurf/mcp_config.json", {
@@ -435,9 +440,7 @@ def _build_config(host: str, command: str) -> tuple[str, object] | None:
 
     if host == "opencode":
         return "opencode.json", {
-            "mcp": {
-                "howler-agents": {"type": "local", "command": [cmd, *args], "enabled": True}
-            }
+            "mcp": {"howler-agents": {"type": "local", "command": [cmd, *args], "enabled": True}}
         }
 
     if host == "amazon-q":
@@ -446,9 +449,7 @@ def _build_config(host: str, command: str) -> tuple[str, object] | None:
         }
 
     if host == "jetbrains":
-        return ".idea/mcp.json", {
-            "mcpServers": {"howler-agents": {"command": cmd, "args": args}}
-        }
+        return ".idea/mcp.json", {"mcpServers": {"howler-agents": {"command": cmd, "args": args}}}
 
     return None
 
@@ -615,7 +616,9 @@ def install(host: str, command: str, global_scope: bool) -> None:
     show_default=True,
     help="HuggingFace dataset path.",
 )
-@click.option("--limit", "-n", default=5, show_default=True, help="Number of instances to evaluate.")
+@click.option(
+    "--limit", "-n", default=5, show_default=True, help="Number of instances to evaluate."
+)
 @click.option(
     "--model",
     "-m",
@@ -623,24 +626,43 @@ def install(host: str, command: str, global_scope: bool) -> None:
     show_default=True,
     help="LLM backend: 'auto' detects local CLI (claude-code, codex, gemini-cli, opencode), or specify e.g. 'claude-code/sonnet', 'codex/default', or a LiteLLM model string.",
 )
-@click.option("--population", "-p", default=6, show_default=True, help="Population size (K) for evolution.")
+@click.option(
+    "--population", "-p", default=6, show_default=True, help="Population size (K) for evolution."
+)
 @click.option("--groups", "-g", default=2, show_default=True, help="Agents per group (M).")
-@click.option("--iterations", default=2, show_default=True, help="Evolution generations before eval.")
-@click.option("--alpha", "-a", default=0.7, show_default=True, help="Performance vs novelty balance.")
+@click.option(
+    "--iterations", default=2, show_default=True, help="Evolution generations before eval."
+)
+@click.option(
+    "--alpha", "-a", default=0.7, show_default=True, help="Performance vs novelty balance."
+)
 @click.option(
     "--skip-docker-eval",
     is_flag=True,
     default=False,
     help="Skip Docker-based evaluation (just generate predictions).",
 )
-@click.option("--workspace", default=None, help="Directory for repos/predictions. Default: .howler-agents/swe-bench")
+@click.option(
+    "--workspace",
+    default=None,
+    help="Directory for repos/predictions. Default: .howler-agents/swe-bench",
+)
 @click.option("--run-id", default=None, help="Custom run ID.")
 @click.option("--instance-ids", default=None, help="Comma-separated instance IDs to evaluate.")
 @click.option("--json-output", is_flag=True, default=False, help="Output report as JSON.")
 @click.option("--check", is_flag=True, default=False, help="Only validate setup prerequisites.")
-@click.option("--max-concurrent", default=3, show_default=True, help="Max parallel prediction workers.")
-@click.option("--instance-timeout", default=300.0, show_default=True, help="Per-instance timeout in seconds.")
-@click.option("--skip-evolution", is_flag=True, default=False, help="Skip GEA evolution, use default agent directly.")
+@click.option(
+    "--max-concurrent", default=3, show_default=True, help="Max parallel prediction workers."
+)
+@click.option(
+    "--instance-timeout", default=300.0, show_default=True, help="Per-instance timeout in seconds."
+)
+@click.option(
+    "--skip-evolution",
+    is_flag=True,
+    default=False,
+    help="Skip GEA evolution, use default agent directly.",
+)
 def swe_bench(
     dataset: str,
     limit: int,
