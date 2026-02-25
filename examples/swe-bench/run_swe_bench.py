@@ -1,4 +1,4 @@
-"""Run GEA on SWE-bench Verified to reproduce the paper's 71.0% result.
+"""Run GEA on SWE-bench to evaluate agent performance.
 
 Configuration follows arXiv:2602.04837 Table 3:
 - K=50 (population size)
@@ -10,120 +10,72 @@ Configuration follows arXiv:2602.04837 Table 3:
 SWE-bench tasks involve multi-file edits across real Python repositories.
 GEA adapts to this complexity by producing smaller, distributed patches
 across more iterations compared to single-file benchmarks.
+
+Usage:
+    # Quick test (5 instances, small population):
+    python run_swe_bench.py
+
+    # Full paper reproduction (requires API keys and Docker):
+    python run_swe_bench.py --limit 0 --population 50 --iterations 60
+
+    # Or use the CLI directly:
+    howler-agents swe-bench --limit 5 --model claude-sonnet-4-20250514
 """
 
+import argparse
 import asyncio
-import uuid
 
-from howler_agents import HowlerConfig
-from howler_agents.agents.base import Agent, AgentConfig, FrameworkPatch, TaskResult
-from howler_agents.agents.pool import AgentPool
-from howler_agents.config import LLMRole, RoleModelConfig
-from howler_agents.evolution.loop import EvolutionLoop
-from howler_agents.evolution.reproducer import GroupReproducer
-from howler_agents.experience.pool import SharedExperiencePool
-from howler_agents.experience.store.memory import InMemoryStore
-from howler_agents.llm.router import LLMRouter
-from howler_agents.probes.evaluator import ProbeEvaluator
-from howler_agents.probes.registry import ProbeRegistry
-from howler_agents.selection.criterion import PerformanceNoveltySelector
+from howler_agents.benchmarks.swe_bench_runner import SWEBenchEvalRunner
 
 
-class SWEBenchAgent(Agent):
-    """Agent implementation for SWE-bench Verified tasks.
-
-    In a real setup, this would integrate with a SWE-bench harness
-    (e.g., OpenHands, SWE-agent) to execute repository-level edits
-    and run the test suite for validation.
-    """
-
-    async def run_task(self, task: dict) -> TaskResult:
-        # TODO: Replace with actual SWE-bench task execution.
-        # The task dict should contain:
-        #   - "instance_id": SWE-bench instance identifier
-        #   - "repo": repository URL
-        #   - "base_commit": commit to check out
-        #   - "problem_statement": issue description
-        #   - "test_patch": patch to apply for validation
-        raise NotImplementedError(
-            "Implement SWE-bench task execution by integrating with your "
-            "preferred agent harness (OpenHands, SWE-agent, etc.)."
-        )
-
-    async def apply_patch(self, patch: FrameworkPatch) -> None:
-        self.patches.append(patch)
-
-
-async def main() -> None:
-    # Paper parameters for SWE-bench Verified (Table 3, arXiv:2602.04837)
-    config = HowlerConfig(
-        population_size=50,      # K=50: population size
-        group_size=5,            # M=5: agents per parent group
-        num_iterations=60,       # 60 iterations for multi-file tasks
-        alpha=0.7,               # Higher alpha favors performance (exploitation)
-        num_probes=30,           # 30 probe tasks for capability characterization
-        task_domain="swe-bench",
-        task_config={
-            "dataset": "princeton-nlp/SWE-bench_Verified",
-            "split": "test",
-        },
-        # Paper uses Claude Haiku for acting, Claude Sonnet for evolving,
-        # and GPT-o1 for reflection. Adjust models to your API access.
-        role_models={
-            LLMRole.ACTING: RoleModelConfig(model="claude-haiku-4-5-20250514"),
-            LLMRole.EVOLVING: RoleModelConfig(model="claude-sonnet-4-20250514"),
-            LLMRole.REFLECTING: RoleModelConfig(model="o1"),
-        },
+async def main(args: argparse.Namespace) -> None:
+    runner = SWEBenchEvalRunner(
+        model=args.model,
+        dataset=args.dataset,
+        population_size=args.population,
+        group_size=args.groups,
+        num_iterations=args.iterations,
+        alpha=args.alpha,
+        num_probes=args.probes,
+        skip_docker_eval=args.skip_docker_eval,
+        max_concurrent=args.max_concurrent,
+        instance_timeout_s=args.instance_timeout,
     )
 
-    # Set up the evolution components
-    store = InMemoryStore()  # Use PostgresStore for durable runs
-    experience = SharedExperiencePool(store)
-    llm = LLMRouter(config)
-    selector = PerformanceNoveltySelector(alpha=config.alpha)
-    reproducer = GroupReproducer(llm, experience, config)
-
-    registry = ProbeRegistry()
-    registry.register_default_probes(num_probes=config.num_probes)
-    probes = ProbeEvaluator(registry)
-
-    # Create initial population
-    pool = AgentPool()
-    for _ in range(config.population_size):
-        pool.add(SWEBenchAgent(AgentConfig(id=str(uuid.uuid4()))))
-
-    loop = EvolutionLoop(config, pool, selector, reproducer, experience, probes)
-
-    print("SWE-bench Verified -- GEA Evolution")
-    print(f"  Population (K):  {config.population_size}")
-    print(f"  Group size (M):  {config.group_size}")
-    print(f"  Alpha:           {config.alpha}")
-    print(f"  Iterations:      {config.num_iterations}")
-    print(f"  Probe tasks:     {config.num_probes}")
+    print("SWE-bench Evaluation -- Howler Agents (GEA)")
+    print(f"  Dataset:     {args.dataset}")
+    print(f"  Model:       {args.model}")
+    print(f"  Population:  {args.population}")
+    print(f"  Groups:      {args.groups}")
+    print(f"  Iterations:  {args.iterations}")
+    print(f"  Alpha:       {args.alpha}")
+    print(f"  Parallel:    {args.max_concurrent}, Timeout: {args.instance_timeout}s")
+    print(f"  Instances:   {args.limit or 'all'}")
     print()
 
-    # Load SWE-bench tasks. In production, these come from the dataset.
-    tasks = [
-        {
-            "description": "SWE-bench task",
-            "type": "swe-bench",
-            "instance_id": "placeholder",
-        }
-    ]
+    report = await runner.run(
+        limit=args.limit if args.limit > 0 else None,
+        run_id=args.run_id,
+    )
 
-    results = await loop.run("swe-bench-run", tasks)
+    print(report.summary())
 
-    print(f"\nEvolution complete.")
-    print(f"Best score: {results['best_score']:.3f}")
-    print(f"Target:     0.710 (71.0% -- paper result)")
-    print()
-    for gen in results["generations"]:
-        print(
-            f"  Gen {gen['generation']:3d}: "
-            f"best={gen['best_score']:.3f}, "
-            f"mean={gen['mean_score']:.3f}"
-        )
+    if report.final_results:
+        print(f"\nTarget: 71.0% (paper result on SWE-bench Verified)")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Run SWE-bench evaluation with GEA")
+    parser.add_argument("--dataset", default="princeton-nlp/SWE-bench_Lite", help="HuggingFace dataset")
+    parser.add_argument("--model", "-m", default="claude-sonnet-4-20250514", help="LiteLLM model")
+    parser.add_argument("--population", "-p", type=int, default=6, help="Population size (K)")
+    parser.add_argument("--groups", "-g", type=int, default=2, help="Group size (M)")
+    parser.add_argument("--iterations", "-n", type=int, default=3, help="Evolution generations")
+    parser.add_argument("--alpha", "-a", type=float, default=0.7, help="Performance vs novelty")
+    parser.add_argument("--probes", type=int, default=15, help="Number of probe tasks")
+    parser.add_argument("--limit", type=int, default=5, help="Number of instances (0=all)")
+    parser.add_argument("--run-id", default=None, help="Custom run ID")
+    parser.add_argument("--skip-docker-eval", action="store_true", help="Skip Docker evaluation")
+    parser.add_argument("--max-concurrent", type=int, default=3, help="Max parallel prediction workers")
+    parser.add_argument("--instance-timeout", type=float, default=300.0, help="Per-instance timeout (seconds)")
+    asyncio.run(main(parser.parse_args()))
