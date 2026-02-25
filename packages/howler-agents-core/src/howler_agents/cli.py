@@ -779,5 +779,238 @@ def swe_bench(
         click.echo(summary)
 
 
+# --------------------------------------------------------------------------- #
+# init                                                                         #
+# --------------------------------------------------------------------------- #
+
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+def _copy_tree(src: Path, dst: Path, overwrite: bool) -> list[str]:
+    """Recursively copy src into dst. Returns list of written paths."""
+    written: list[str] = []
+    for item in sorted(src.rglob("*")):
+        if item.is_dir():
+            continue
+        rel = item.relative_to(src)
+        target = dst / rel
+        if target.exists() and not overwrite:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(item.read_bytes())
+        # Preserve executable bit
+        if os.access(item, os.X_OK):
+            target.chmod(target.stat().st_mode | 0o111)
+        written.append(str(rel))
+    return written
+
+
+def _ensure_gitignore_entry(root: Path, entry: str) -> bool:
+    """Add entry to .gitignore if not already present. Returns True if added."""
+    gitignore = root / ".gitignore"
+    if gitignore.exists():
+        content = gitignore.read_text()
+        # Check for exact line match
+        for line in content.splitlines():
+            if line.strip() == entry:
+                return False
+        # Append
+        if not content.endswith("\n"):
+            content += "\n"
+        content += f"{entry}\n"
+        gitignore.write_text(content)
+    else:
+        gitignore.write_text(f"{entry}\n")
+    return True
+
+
+def _ensure_mcp_json(root: Path, command: str) -> bool:
+    """Add howler-agents to .mcp.json. Returns True if modified."""
+    if command == "npx":
+        cmd = "npx"
+        args = ["howler-agents@latest", "serve", "--transport", "stdio"]
+    elif command == "uvx":
+        cmd = "uvx"
+        args = [
+            "--from",
+            "howler-agents-core[mcp]",
+            "howler-agents",
+            "serve",
+            "--transport",
+            "stdio",
+        ]
+    else:
+        cmd = "howler-agents"
+        args = ["serve", "--transport", "stdio"]
+
+    mcp_json = root / ".mcp.json"
+    existing: dict = {}
+    if mcp_json.exists():
+        try:
+            existing = json.loads(mcp_json.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    servers = existing.setdefault("mcpServers", {})
+    if "howler-agents" in servers:
+        return False
+
+    servers["howler-agents"] = {"command": cmd, "args": args}
+    mcp_json.write_text(json.dumps(existing, indent=2) + "\n")
+    return True
+
+
+@cli.command("init")
+@click.option(
+    "--command",
+    "mcp_command",
+    default="npx",
+    show_default=True,
+    type=click.Choice(["npx", "uvx", "howler-agents"]),
+    help="MCP server command: 'npx' (zero-install), 'uvx' (Python), or 'howler-agents' (direct).",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Overwrite existing skill/agent files.",
+)
+@click.option(
+    "--skip-skills",
+    is_flag=True,
+    default=False,
+    help="Skip installing Claude Code skills.",
+)
+@click.option(
+    "--skip-agents",
+    is_flag=True,
+    default=False,
+    help="Skip installing Claude Code agent definitions.",
+)
+@click.option(
+    "--skip-mcp",
+    is_flag=True,
+    default=False,
+    help="Skip registering the MCP server in .mcp.json.",
+)
+def init(
+    mcp_command: str,
+    overwrite: bool,
+    skip_skills: bool,
+    skip_agents: bool,
+    skip_mcp: bool,
+) -> None:
+    """Initialize howler-agents in the current repository.
+
+    Sets up Claude Code skills, agent definitions, MCP server registration,
+    and the local .howler-agents/ directory. Run this once in any repo to
+    enable all /howler-* slash commands.
+
+    \b
+    Quick setup (recommended):
+        npx howler-agents init
+
+    \b
+    Using uvx (Python-native):
+        npx howler-agents init --command uvx
+
+    \b
+    Overwrite existing files:
+        npx howler-agents init --overwrite
+
+    \b
+    MCP registration only (no skills):
+        npx howler-agents init --skip-skills --skip-agents
+    """
+    root = Path.cwd()
+    click.echo("howler-agents init")
+    click.echo(f"  Directory: {root}\n")
+
+    # Verify templates exist
+    if not _TEMPLATES_DIR.is_dir():
+        click.echo(
+            "Error: Template files not found. "
+            "Reinstall with: pip install 'howler-agents-core[mcp]'",
+            err=True,
+        )
+        sys.exit(1)
+
+    # 1. Create .howler-agents/ local directory
+    howler_dir = root / ".howler-agents"
+    if howler_dir.exists():
+        click.echo("  [ok] .howler-agents/ already exists")
+    else:
+        howler_dir.mkdir(parents=True)
+        click.echo("  [+] Created .howler-agents/")
+
+    # 2. Add .howler-agents/ to .gitignore
+    if _ensure_gitignore_entry(root, ".howler-agents/"):
+        click.echo("  [+] Added .howler-agents/ to .gitignore")
+    else:
+        click.echo("  [ok] .howler-agents/ already in .gitignore")
+
+    # Also add the claude local memory DB
+    if _ensure_gitignore_entry(root, ".claude/memory.db"):
+        click.echo("  [+] Added .claude/memory.db to .gitignore")
+
+    # 3. Install skills
+    if not skip_skills:
+        skills_src = _TEMPLATES_DIR / "skills"
+        skills_dst = root / ".claude" / "skills"
+        if skills_src.is_dir():
+            written = _copy_tree(skills_src, skills_dst, overwrite)
+            if written:
+                # Count unique skill directories
+                skill_names = {Path(w).parts[0] for w in written}
+                click.echo(
+                    f"  [+] Installed {len(skill_names)} skills "
+                    f"({len(written)} files) to .claude/skills/"
+                )
+                for name in sorted(skill_names):
+                    click.echo(f"      /{''.join(name)}")
+            else:
+                click.echo("  [ok] All skills already exist (use --overwrite to replace)")
+        else:
+            click.echo("  [!] No skill templates found in package", err=True)
+
+    # 4. Install agent definitions
+    if not skip_agents:
+        agents_src = _TEMPLATES_DIR / "agents"
+        agents_dst = root / ".claude" / "agents"
+        if agents_src.is_dir():
+            written = _copy_tree(agents_src, agents_dst, overwrite)
+            if written:
+                click.echo(f"  [+] Installed {len(written)} agent definitions to .claude/agents/")
+            else:
+                click.echo(
+                    "  [ok] All agent definitions already exist (use --overwrite to replace)"
+                )
+        else:
+            click.echo("  [!] No agent templates found in package", err=True)
+
+    # 5. Register MCP server
+    if not skip_mcp:
+        if _ensure_mcp_json(root, mcp_command):
+            click.echo(f"  [+] Registered MCP server in .mcp.json (command: {mcp_command})")
+        else:
+            click.echo("  [ok] MCP server already registered in .mcp.json")
+
+    # Summary
+    click.echo("\nDone! Available slash commands:")
+    click.echo("  /howler-agents          Best-first-pass solution (hive-mind + GEA)")
+    click.echo("  /howler-agents-wiggam   Iterative loop with hive-mind + GEA per iteration")
+    click.echo("  /howler-init            Seed hive-mind with repo intelligence")
+    click.echo("  /howler-evolve          Start a full GEA evolution run")
+    click.echo("  /howler-auto-evolve     One-shot evolution with auto-deployment")
+    click.echo("  /howler-setup           Re-run local environment setup")
+    click.echo("  /howler-status          Check run progress")
+    click.echo("  /howler-memory          Browse collective memory")
+    click.echo("  /howler-sync            Sync with team database")
+    click.echo("")
+    click.echo("Next steps:")
+    click.echo("  1. Run /howler-init to seed the hive-mind with repo intelligence")
+    click.echo("  2. Run /howler-agents <task> to solve tasks with collective intelligence")
+
+
 if __name__ == "__main__":
     cli()

@@ -7,6 +7,7 @@
  * is installed, then proxies all commands to the Python CLI.
  *
  * Usage:
+ *   npx howler-agents init                      # Set up skills, MCP, agents in any repo
  *   npx howler-agents serve                     # Start MCP server
  *   npx howler-agents install                   # Register with AI coding tools
  *   npx howler-agents evolve --domain coding    # Run evolution locally
