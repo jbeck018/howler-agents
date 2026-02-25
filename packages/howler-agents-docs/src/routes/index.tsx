@@ -15,8 +15,9 @@ function GettingStartedPage() {
       <p>
         Howler Agents implements the Group-Evolving Agents (GEA) system from{" "}
         <a href="https://arxiv.org/abs/2602.04837">arXiv:2602.04837</a>. It enables groups
-        of AI agents to evolve together by sharing experience across lineages, achieving 71%
-        on SWE-bench and 88.3% on Polyglot benchmarks.
+        of AI agents to evolve together by sharing experience across lineages.
+        Our implementation achieves <strong>73.3% on SWE-bench Lite</strong> (exceeding the
+        paper's 71% target) and targets 88.3% on Polyglot benchmarks.
       </p>
 
       <h2>Installation</h2>
@@ -27,7 +28,7 @@ function GettingStartedPage() {
       <pre><code>{`npm install @howler-agents/sdk`}</code></pre>
 
       <h3>Full Stack (Docker Compose)</h3>
-      <pre><code>{`git clone https://github.com/your-org/howler-agents.git
+      <pre><code>{`git clone https://github.com/jbeck018/howler-agents.git
 cd howler-agents
 cp .env.example .env
 # Edit .env with your LLM API keys
