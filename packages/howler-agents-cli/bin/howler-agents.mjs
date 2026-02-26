@@ -39,22 +39,37 @@ function commandExists(cmd) {
 
 /**
  * Check if howler-agents Python CLI is already available.
+ *
+ * Uses file-existence checks instead of spawning a Python process.
+ * The old approach (`howler-agents --help`) imported the entire package
+ * (litellm, numpy, sklearn) which caused multi-second startup and 100% CPU.
  */
 function isInstalled() {
-  try {
-    execSync(`${BIN_NAME} --help`, { stdio: "ignore", timeout: 10_000 });
-    return BIN_NAME;
-  } catch {
-    // Check in our managed venv
-    const venvBin =
-      process.platform === "win32"
-        ? join(VENV_DIR, "Scripts", BIN_NAME)
-        : join(VENV_DIR, "bin", BIN_NAME);
-    if (existsSync(venvBin)) {
-      return venvBin;
-    }
-    return null;
+  // Check in our managed venv first (most common case after first install)
+  const venvBin =
+    process.platform === "win32"
+      ? join(VENV_DIR, "Scripts", BIN_NAME)
+      : join(VENV_DIR, "bin", BIN_NAME);
+  if (existsSync(venvBin)) {
+    return venvBin;
   }
+
+  // Check if available on PATH via `command -v` (no Python import needed)
+  try {
+    const resolved = execSync(`command -v ${BIN_NAME}`, {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3_000,
+    })
+      .toString()
+      .trim();
+    if (resolved) {
+      return BIN_NAME;
+    }
+  } catch {
+    // not on PATH
+  }
+
+  return null;
 }
 
 /**

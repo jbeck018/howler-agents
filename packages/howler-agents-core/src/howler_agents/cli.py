@@ -703,8 +703,6 @@ def swe_bench(
     Generate predictions without Docker eval:
         howler-agents swe-bench --skip-docker-eval --limit 10
     """
-    from howler_agents.benchmarks.swe_bench_runner import SWEBenchEvalRunner
-
     if check:
         from howler_agents.benchmarks.swe_bench_harness import SWEBenchHarness
 
@@ -731,6 +729,8 @@ def swe_bench(
             click.echo("\nSome checks failed. Fix the issues above before running evaluation.")
             sys.exit(1)
         return
+
+    from howler_agents.benchmarks.swe_bench_runner import SWEBenchEvalRunner
 
     ids = [s.strip() for s in instance_ids.split(",")] if instance_ids else None
     actual_limit = None if limit == 0 else limit

@@ -1,7 +1,17 @@
 """Howler Agents - Group-Evolving Agents core library."""
 
-from howler_agents.config import HowlerConfig
-from howler_agents.evolution.loop import EvolutionLoop
-
 __all__ = ["EvolutionLoop", "HowlerConfig"]
 __version__ = "0.1.0"
+
+
+def __getattr__(name: str):
+    """Lazy imports — avoid loading numpy/sklearn/scipy on CLI startup."""
+    if name == "HowlerConfig":
+        from howler_agents.config import HowlerConfig
+
+        return HowlerConfig
+    if name == "EvolutionLoop":
+        from howler_agents.evolution.loop import EvolutionLoop
+
+        return EvolutionLoop
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
