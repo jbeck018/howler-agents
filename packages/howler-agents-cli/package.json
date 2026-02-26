@@ -1,6 +1,6 @@
 {
   "name": "howler-agents",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Group-Evolving AI Agents - groups of AI agents evolve together by sharing experience across lineages",
   "license": "MIT",
   "type": "module",
