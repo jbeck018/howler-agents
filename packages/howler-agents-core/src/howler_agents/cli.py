@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -1010,6 +1011,231 @@ def init(
     click.echo("Next steps:")
     click.echo("  1. Run /howler-init to seed the hive-mind with repo intelligence")
     click.echo("  2. Run /howler-agents <task> to solve tasks with collective intelligence")
+
+
+# --------------------------------------------------------------------------- #
+# uninstall                                                                    #
+# --------------------------------------------------------------------------- #
+
+_HOWLER_SKILL_PREFIXES = (
+    "howler-agents",
+    "howler-agents-wiggam",
+    "howler-auto-evolve",
+    "howler-evolve",
+    "howler-init",
+    "howler-memory",
+    "howler-setup",
+    "howler-status",
+    "howler-sync",
+)
+
+
+def _kill_howler_processes() -> int:
+    """Kill all running howler-agents processes. Returns count killed."""
+    import signal
+    import subprocess
+
+    killed = 0
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "howler-agents"],
+            capture_output=True,
+            text=True,
+        )
+        pids = [p.strip() for p in result.stdout.splitlines() if p.strip()]
+        my_pid = str(os.getpid())
+        for pid in pids:
+            if pid == my_pid:
+                continue
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+                killed += 1
+            except (ProcessLookupError, PermissionError):
+                pass
+    except FileNotFoundError:
+        # pgrep not available (Windows), try taskkill
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "howler-agents*"],
+                capture_output=True,
+            )
+        except FileNotFoundError:
+            pass
+    return killed
+
+
+def _remove_from_mcp_json(root: Path) -> bool:
+    """Remove howler-agents entry from .mcp.json. Returns True if modified."""
+    mcp_json = root / ".mcp.json"
+    if not mcp_json.exists():
+        return False
+    try:
+        data = json.loads(mcp_json.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    servers = data.get("mcpServers", {})
+    if "howler-agents" not in servers:
+        return False
+
+    del servers["howler-agents"]
+    if not servers:
+        del data["mcpServers"]
+
+    if data:
+        mcp_json.write_text(json.dumps(data, indent=2) + "\n")
+    else:
+        mcp_json.unlink()
+    return True
+
+
+def _remove_gitignore_entry(root: Path, entry: str) -> bool:
+    """Remove an entry from .gitignore. Returns True if removed."""
+    gitignore = root / ".gitignore"
+    if not gitignore.exists():
+        return False
+    lines = gitignore.read_text().splitlines()
+    filtered = [line for line in lines if line.strip() != entry]
+    if len(filtered) == len(lines):
+        return False
+    gitignore.write_text("\n".join(filtered) + "\n" if filtered else "")
+    return True
+
+
+@cli.command("uninstall")
+@click.option(
+    "--keep-data",
+    is_flag=True,
+    default=False,
+    help="Keep .howler-agents/ data directory (preserves local evolution history).",
+)
+@click.option(
+    "--remove-venv",
+    is_flag=True,
+    default=False,
+    help="Also remove the global Python venv at ~/.howler-agents/venv.",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt.",
+)
+def uninstall(keep_data: bool, remove_venv: bool, yes: bool) -> None:
+    """Uninstall howler-agents from the current repository.
+
+    Stops running processes, removes skills, agents, MCP registration,
+    and local data. Reverses everything `howler-agents init` created.
+
+    \b
+    Quick uninstall (no confirmation):
+        howler-agents uninstall -y
+
+    \b
+    Keep local evolution data:
+        howler-agents uninstall --keep-data
+
+    \b
+    Full cleanup including global venv:
+        howler-agents uninstall --remove-venv -y
+    """
+    root = Path.cwd()
+
+    if not yes:
+        click.echo("This will remove howler-agents from the current repository:")
+        click.echo(f"  Directory: {root}\n")
+        click.echo("  - Kill running howler-agents processes")
+        click.echo("  - Remove .claude/skills/howler-* (9 skills)")
+        click.echo("  - Remove .claude/agents/howler/ (4 agents)")
+        click.echo("  - Remove howler-agents from .mcp.json")
+        if not keep_data:
+            click.echo("  - Remove .howler-agents/ local data")
+        if remove_venv:
+            click.echo(f"  - Remove {Path.home() / '.howler-agents' / 'venv'}")
+        click.echo()
+        if not click.confirm("Continue?"):
+            click.echo("Aborted.")
+            return
+
+    click.echo("howler-agents uninstall")
+    click.echo(f"  Directory: {root}\n")
+
+    # 1. Kill running processes
+    killed = _kill_howler_processes()
+    if killed:
+        click.echo(f"  [+] Stopped {killed} howler-agents process(es)")
+    else:
+        click.echo("  [ok] No running howler-agents processes found")
+
+    # 2. Remove skills
+    skills_dir = root / ".claude" / "skills"
+    skills_removed = 0
+    if skills_dir.is_dir():
+        for prefix in _HOWLER_SKILL_PREFIXES:
+            skill_path = skills_dir / prefix
+            if skill_path.is_dir():
+                shutil.rmtree(skill_path)
+                skills_removed += 1
+    if skills_removed:
+        click.echo(f"  [+] Removed {skills_removed} skills from .claude/skills/")
+    else:
+        click.echo("  [ok] No howler skills found in .claude/skills/")
+
+    # 3. Remove agent definitions
+    agents_dir = root / ".claude" / "agents" / "howler"
+    if agents_dir.is_dir():
+        agent_count = len(list(agents_dir.glob("*.md")))
+        shutil.rmtree(agents_dir)
+        click.echo(f"  [+] Removed {agent_count} agent definitions from .claude/agents/howler/")
+    else:
+        click.echo("  [ok] No howler agents found in .claude/agents/")
+
+    # 4. Remove from .mcp.json
+    if _remove_from_mcp_json(root):
+        click.echo("  [+] Removed howler-agents from .mcp.json")
+    else:
+        click.echo("  [ok] howler-agents not found in .mcp.json")
+
+    # 5. Remove .howler-agents/ local data
+    howler_dir = root / ".howler-agents"
+    if not keep_data and howler_dir.is_dir():
+        shutil.rmtree(howler_dir)
+        click.echo("  [+] Removed .howler-agents/ local data")
+    elif keep_data and howler_dir.is_dir():
+        click.echo("  [ok] Kept .howler-agents/ local data (--keep-data)")
+    else:
+        click.echo("  [ok] No .howler-agents/ directory found")
+
+    # 6. Clean up .gitignore entries
+    gi_removed = 0
+    if not keep_data:
+        if _remove_gitignore_entry(root, ".howler-agents/"):
+            gi_removed += 1
+    if _remove_gitignore_entry(root, ".claude/memory.db"):
+        gi_removed += 1
+    if gi_removed:
+        click.echo(f"  [+] Cleaned {gi_removed} entries from .gitignore")
+
+    # 7. Remove global venv if requested
+    if remove_venv:
+        venv_dir = Path.home() / ".howler-agents" / "venv"
+        if venv_dir.is_dir():
+            shutil.rmtree(venv_dir)
+            click.echo(f"  [+] Removed global venv at {venv_dir}")
+        else:
+            click.echo("  [ok] No global venv found")
+
+    # Clean up empty .claude/ dirs
+    for d in [
+        root / ".claude" / "agents",
+        root / ".claude" / "skills",
+        root / ".claude",
+    ]:
+        if d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+
+    click.echo("\nDone! howler-agents has been removed from this repository.")
 
 
 if __name__ == "__main__":

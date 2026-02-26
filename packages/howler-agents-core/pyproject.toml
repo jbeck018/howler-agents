@@ -1,6 +1,6 @@
 [project]
 name = "howler-agents-core"
-version = "0.2.0"
+version = "0.3.0"
 description = "Core library for Group-Evolving Agents"
 readme = "README.md"
 license = { text = "MIT" }
