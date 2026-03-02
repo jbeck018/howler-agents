@@ -1,7 +1,7 @@
 """Howler Agents - Group-Evolving Agents core library."""
 
 __all__ = ["EvolutionLoop", "HowlerConfig"]
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 def __getattr__(name: str):

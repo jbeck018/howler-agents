@@ -164,6 +164,13 @@ class SWEBenchEvalRunner:
         print(report.summary())
     """
 
+    # Default per-repo timeouts for repos with known slow test suites
+    _DEFAULT_REPO_TIMEOUTS: dict[str, float] = {
+        "sympy/sympy": 1200,
+        "matplotlib/matplotlib": 600,
+        "pydata/xarray": 1200,
+    }
+
     def __init__(
         self,
         model: str = "auto",
@@ -180,6 +187,8 @@ class SWEBenchEvalRunner:
         skip_docker_eval: bool = False,
         max_concurrent: int = 3,
         instance_timeout_s: float = 300.0,
+        repo_timeouts: dict[str, float] | None = None,
+        voting_ensemble: int = 1,
     ) -> None:
         self._model = self._resolve_model(model)
         self._dataset = dataset
@@ -195,6 +204,9 @@ class SWEBenchEvalRunner:
         self._skip_docker_eval = skip_docker_eval
         self._max_concurrent = max(1, max_concurrent)
         self._instance_timeout_s = instance_timeout_s
+        self._repo_timeouts = {**self._DEFAULT_REPO_TIMEOUTS, **(repo_timeouts or {})}
+        self._voting_ensemble = max(1, voting_ensemble)
+        self._evolved_pool: AgentPool | None = None
 
     @staticmethod
     def _resolve_model(model: str) -> str:
@@ -534,6 +546,9 @@ class SWEBenchEvalRunner:
                     )
                     suggestions.append("Try more iterations or adjust alpha for more exploration")
 
+            # Save the pool for potential voting ensemble
+            self._evolved_pool = pool
+
             # Get the best agent
             top_agents = pool.top_k(1)
             best_agent = top_agents[0] if top_agents else None
@@ -622,28 +637,62 @@ class SWEBenchEvalRunner:
         assert best_agent is not None
         agent_ref = best_agent
 
+        # Build ensemble agents list for voting
+        ensemble_agents: list[SWEBenchAgent] = [agent_ref]
+        if self._voting_ensemble > 1 and self._evolved_pool is not None:
+            top_k = self._evolved_pool.top_k(self._voting_ensemble)
+            for a in top_k:
+                if isinstance(a, SWEBenchAgent) and a is not agent_ref:
+                    ensemble_agents.append(a)
+                    if len(ensemble_agents) >= self._voting_ensemble:
+                        break
+        voting_enabled = len(ensemble_agents) > 1
+
         max_concurrent = self._max_concurrent
-        instance_timeout = self._instance_timeout_s
+        default_timeout = self._instance_timeout_s
+        repo_timeouts = self._repo_timeouts
         sem = _aio.Semaphore(max_concurrent)
         results_map: dict[str, SWEBenchPrediction] = {}
         timing_map: dict[str, float] = {}  # instance_id -> wall seconds
+
+        if voting_enabled:
+            went_well.append(
+                f"Voting ensemble: {len(ensemble_agents)} agents per instance"
+            )
+
+        async def _run_single_agent(
+            agent: SWEBenchAgent,
+            task_dict: dict[str, Any],
+            timeout: float,
+        ) -> tuple[str, float]:
+            """Run a single agent on a task, return (patch, score)."""
+            agent_copy = SWEBenchAgent(
+                config=copy.deepcopy(agent.config),
+                llm=agent._llm,
+            )
+            result = await _aio.wait_for(
+                agent_copy.run_task(task_dict),
+                timeout=timeout,
+            )
+            return (result.output or "", result.score)
 
         async def _process_instance(idx: int, instance: SWEBenchInstance) -> None:
             async with sem:
                 inst_start = time.monotonic()
                 iid = instance.instance_id
+                # Per-repo timeout (e.g., sympy needs 1200s for slow test suites)
+                instance_timeout = repo_timeouts.get(
+                    instance.repo, default_timeout
+                )
                 logger.info(
                     "generating_prediction",
                     instance_id=iid,
                     progress=f"{idx + 1}/{len(instances)}",
+                    timeout_s=instance_timeout,
+                    ensemble=len(ensemble_agents),
                 )
                 try:
                     repo_dir = harness.checkout_repo(instance)
-                    # Deep-copy the agent to avoid shared mutable state
-                    agent_copy = SWEBenchAgent(
-                        config=copy.deepcopy(agent_ref.config),
-                        llm=agent_ref._llm,
-                    )
                     task: dict[str, Any] = {
                         "instance_id": iid,
                         "problem_statement": instance.problem_statement,
@@ -653,12 +702,45 @@ class SWEBenchEvalRunner:
                     # Include failing test names to guide the fix
                     if instance.fail_to_pass:
                         task["fail_to_pass"] = instance.fail_to_pass
-                    # Adaptive timeout: use runner-level default
-                    result = await _aio.wait_for(
-                        agent_copy.run_task(task),
-                        timeout=instance_timeout,
-                    )
-                    patch_output = result.output or ""
+                    # Include pass_to_pass test names for regression awareness
+                    if instance.pass_to_pass:
+                        task["pass_to_pass"] = instance.pass_to_pass
+
+                    if voting_enabled:
+                        # Run all ensemble agents concurrently on this instance
+                        agent_tasks = [
+                            _run_single_agent(a, task, instance_timeout)
+                            for a in ensemble_agents
+                        ]
+                        agent_results = await _aio.gather(
+                            *agent_tasks, return_exceptions=True
+                        )
+                        # Collect valid (patch, score) pairs
+                        candidates: list[tuple[str, float]] = []
+                        for r in agent_results:
+                            if isinstance(r, tuple):
+                                candidates.append(r)
+                        patch_output = self._select_best_patch(
+                            candidates, repo_dir
+                        )
+                        logger.info(
+                            "voting_result",
+                            instance_id=iid,
+                            candidates=len(candidates),
+                            selected=bool(patch_output),
+                        )
+                    else:
+                        # Single agent (original path)
+                        agent_copy = SWEBenchAgent(
+                            config=copy.deepcopy(agent_ref.config),
+                            llm=agent_ref._llm,
+                        )
+                        result = await _aio.wait_for(
+                            agent_copy.run_task(task),
+                            timeout=instance_timeout,
+                        )
+                        patch_output = result.output or ""
+
                     results_map[iid] = SWEBenchPrediction(
                         instance_id=iid,
                         model_name_or_path=f"howler-agents/{run_id}",
@@ -802,3 +884,42 @@ class SWEBenchEvalRunner:
                     "Try: docker info",
                 ],
             )
+
+    @staticmethod
+    def _select_best_patch(
+        candidates: list[tuple[str, float]],
+        repo_dir: Path | None,
+    ) -> str:
+        """Select the best patch from voting ensemble candidates.
+
+        1. Filters patches that apply cleanly (git apply --check)
+        2. Among valid patches, selects the highest-scoring one
+        3. Falls back to first valid patch if scores are equal
+        4. Falls back to first non-empty patch if none apply cleanly
+        """
+        if not candidates:
+            return ""
+
+        valid: list[tuple[str, float]] = []
+        non_empty: list[tuple[str, float]] = []
+
+        for patch, score in candidates:
+            if not patch or not patch.strip():
+                continue
+            non_empty.append((patch, score))
+            # Check if patch applies cleanly
+            error = SWEBenchAgent._try_apply_patch(patch, repo_dir)
+            if error is None:
+                valid.append((patch, score))
+
+        if valid:
+            # Sort by score descending, return the best
+            valid.sort(key=lambda x: -x[1])
+            return valid[0][0]
+
+        if non_empty:
+            # No valid patches — return highest-scoring non-empty one
+            non_empty.sort(key=lambda x: -x[1])
+            return non_empty[0][0]
+
+        return ""

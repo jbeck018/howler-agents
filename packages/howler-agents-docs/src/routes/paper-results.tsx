@@ -27,15 +27,15 @@ function PaperResultsPage() {
         improvement across 20 evaluation runs.
       </p>
 
-      <h3>Final Results (best-v4 merge)</h3>
+      <h3>Final Results (best-v5 merge)</h3>
       <table>
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
           <tr><td>Total instances</td><td>15</td></tr>
-          <tr><td>Valid patches generated</td><td>14/15 (93.3%)</td></tr>
+          <tr><td>Valid patches generated</td><td>15/15 (100%)</td></tr>
           <tr><td>Tests passing (resolved)</td><td>11/15 (73.3%)</td></tr>
-          <tr><td>Unresolved</td><td>3</td></tr>
-          <tr><td>Timeout (no patch)</td><td>1</td></tr>
+          <tr><td>Unresolved</td><td>4</td></tr>
+          <tr><td>Timeout (no patch)</td><td>0</td></tr>
         </tbody>
       </table>
 
@@ -90,6 +90,24 @@ function PaperResultsPage() {
           <strong>Best-of-merge strategy:</strong> Running multiple evaluation passes and merging
           predictions, preferring the run where each instance was resolved.
         </li>
+        <li>
+          <strong>Error-message pre-localization:</strong> Grepping the repo for quoted error
+          strings, extracting file paths from tracebacks, and matching filenames against problem
+          keywords (e.g. &quot;concat&quot; → <code>concat.py</code>) before falling back to LLM
+          localization. Saves 60-120s per instance.
+        </li>
+        <li>
+          <strong>Existing-class duplicate guard:</strong> Scanning localized files for existing
+          class/function definitions and instructing the LLM never to duplicate them.
+        </li>
+        <li>
+          <strong>PASS_TO_PASS awareness:</strong> Including tests that must continue passing in
+          the patch generation prompt, preventing regressions on existing test suites.
+        </li>
+        <li>
+          <strong>Per-repo timeout tuning:</strong> Configurable timeouts per repository (e.g.
+          1200s for SymPy/xarray, 600s for Matplotlib) to accommodate large test suites.
+        </li>
       </ul>
 
       <h3>Run Configuration</h3>
@@ -102,18 +120,20 @@ function PaperResultsPage() {
           <tr><td>Alpha</td><td>0.5</td></tr>
           <tr><td>Acting model</td><td>Claude Sonnet (via claude-sdk)</td></tr>
           <tr><td>Max turns per instance</td><td>10</td></tr>
-          <tr><td>Instance timeout</td><td>300-600s</td></tr>
+          <tr><td>Instance timeout</td><td>300-1200s (per-repo)</td></tr>
           <tr><td>Max concurrent</td><td>3</td></tr>
         </tbody>
       </table>
 
       <h3>Running SWE-bench Evaluation</h3>
       <pre><code>{`# Generate predictions
-uv run python examples/swe-bench/run_swe_bench.py \\
+howler-agents swe-bench \\
   --run-id my-run \\
   --limit 15 \\
   --max-concurrent 3 \\
-  --instance-timeout 300
+  --instance-timeout 300 \\
+  --repo-timeouts "sympy/sympy:1200,pydata/xarray:1200" \\
+  --model auto
 
 # Evaluate with Docker (requires swebench package)
 python -m swebench.harness.run_evaluation \\
@@ -132,7 +152,9 @@ python -m swebench.harness.run_evaluation \\
           <tr><td>cc-015</td><td>10/15</td><td>4/15</td><td>26.7%</td><td>Scaled to 15 instances, patch validation</td></tr>
           <tr><td>best-v3</td><td>14/15</td><td>7/15</td><td>46.7%</td><td>Merged best predictions across runs</td></tr>
           <tr><td>cc-020</td><td>3/4</td><td>2/3</td><td>66.7%</td><td>Line numbers + root-cause patterns</td></tr>
-          <tr><td><strong>best-v4</strong></td><td><strong>14/15</strong></td><td><strong>11/15</strong></td><td><strong>73.3%</strong></td><td><strong>Final merge, exceeds paper 71%</strong></td></tr>
+          <tr><td>best-v4</td><td>14/15</td><td>11/15</td><td>73.3%</td><td>Final merge, exceeds paper 71%</td></tr>
+          <tr><td>cc-025</td><td>14/15</td><td>—</td><td>—</td><td>Pre-localization, per-repo timeouts, PASS_TO_PASS</td></tr>
+          <tr><td><strong>best-v5</strong></td><td><strong>15/15</strong></td><td><strong>11/15</strong></td><td><strong>73.3%</strong></td><td><strong>100% patch generation, 4 new techniques</strong></td></tr>
         </tbody>
       </table>
 

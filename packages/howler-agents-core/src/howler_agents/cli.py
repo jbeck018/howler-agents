@@ -664,6 +664,18 @@ def install(host: str, command: str, global_scope: bool) -> None:
     default=False,
     help="Skip GEA evolution, use default agent directly.",
 )
+@click.option(
+    "--repo-timeouts",
+    default=None,
+    help="Per-repo timeout overrides, comma-separated repo:seconds pairs. "
+    "E.g., 'sympy/sympy:1200,pydata/xarray:600'",
+)
+@click.option(
+    "--voting-ensemble",
+    default=1,
+    show_default=True,
+    help="Number of agents to run per instance for patch voting (1=disabled).",
+)
 def swe_bench(
     dataset: str,
     limit: int,
@@ -681,6 +693,8 @@ def swe_bench(
     check: bool,
     max_concurrent: int,
     instance_timeout: float,
+    repo_timeouts: str | None,
+    voting_ensemble: int,
 ) -> None:
     """Run SWE-Bench evaluation with GEA-evolved agents.
 
@@ -736,6 +750,19 @@ def swe_bench(
     ids = [s.strip() for s in instance_ids.split(",")] if instance_ids else None
     actual_limit = None if limit == 0 else limit
 
+    # Parse per-repo timeout overrides: "sympy/sympy:1200,pydata/xarray:600"
+    parsed_repo_timeouts: dict[str, float] | None = None
+    if repo_timeouts:
+        parsed_repo_timeouts = {}
+        for pair in repo_timeouts.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                repo_name, timeout_str = pair.rsplit(":", 1)
+                try:
+                    parsed_repo_timeouts[repo_name.strip()] = float(timeout_str.strip())
+                except ValueError:
+                    click.echo(f"Warning: invalid repo timeout '{pair}', skipping", err=True)
+
     runner = SWEBenchEvalRunner(
         model=model,
         dataset=dataset,
@@ -747,6 +774,8 @@ def swe_bench(
         skip_docker_eval=skip_docker_eval,
         max_concurrent=max_concurrent,
         instance_timeout_s=instance_timeout,
+        repo_timeouts=parsed_repo_timeouts,
+        voting_ensemble=voting_ensemble,
     )
 
     click.echo(f"SWE-Bench Evaluation: {dataset}", err=True)
@@ -754,6 +783,10 @@ def swe_bench(
     click.echo(f"  Population: {population}, Groups: {groups}", err=True)
     click.echo(f"  Iterations: {iterations}, Alpha: {alpha}", err=True)
     click.echo(f"  Parallel:   {max_concurrent}, Timeout: {instance_timeout}s", err=True)
+    if parsed_repo_timeouts:
+        click.echo(f"  Repo timeouts: {parsed_repo_timeouts}", err=True)
+    if voting_ensemble > 1:
+        click.echo(f"  Voting:     {voting_ensemble} agents per instance", err=True)
     click.echo(f"  Instances:  {actual_limit or 'all'}", err=True)
     click.echo("", err=True)
 

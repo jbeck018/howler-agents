@@ -213,7 +213,7 @@ async def sdk_complete(
     model_name = _CLAUDE_ALIASES.get(suffix, suffix)
 
     prompt = _messages_to_prompt(messages)
-    timeout = kwargs.get("timeout", 300)
+    timeout = kwargs.get("timeout", 900)
     cwd = kwargs.get("cwd")
     system_prompt = kwargs.get("system_prompt")
     # Default max_turns=10: the SDK model may use internal Claude Code tools

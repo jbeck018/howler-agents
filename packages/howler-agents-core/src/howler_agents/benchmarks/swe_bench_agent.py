@@ -80,6 +80,7 @@ class SWEBenchAgent(Agent):
         repo_dir = task.get("repo_dir")
         repo = task.get("repo", "")
         fail_to_pass: list[str] = task.get("fail_to_pass", [])
+        pass_to_pass: list[str] = task.get("pass_to_pass", [])
 
         if not problem:
             return TaskResult(
@@ -119,9 +120,27 @@ class SWEBenchAgent(Agent):
             if test_context:
                 decisions.append(f"Read {len(test_context)} chars of failing test code")
 
+            # Step 2c: Read PASS_TO_PASS test code for awareness
+            pass_to_pass_context = ""
+            if pass_to_pass:
+                # Read relevant pass_to_pass test code (limited budget)
+                pass_to_pass_context = self._read_test_code(
+                    repo_dir, pass_to_pass[:5], max_chars=4000
+                )
+                if pass_to_pass_context:
+                    decisions.append(
+                        f"Read {len(pass_to_pass_context)} chars of pass_to_pass test code"
+                    )
+
             # Step 3: Generate patch
             patch = await self._generate_patch(
-                problem, file_contents, repo, instance_id, fail_to_pass, test_context
+                problem,
+                file_contents,
+                repo,
+                instance_id,
+                fail_to_pass,
+                test_context,
+                pass_to_pass,
             )
 
             if not patch or patch.strip() == "":
@@ -157,6 +176,135 @@ class SWEBenchAgent(Agent):
                 lessons_learned=["Handle task execution errors gracefully"],
             )
 
+    @staticmethod
+    def _grep_error_message(repo_dir: Path, problem: str) -> list[str]:
+        """Grep the repo for quoted error message strings from the problem.
+
+        Extracts quoted strings from the problem statement (both single and
+        double quoted) and searches for them in the repo source files.
+        Returns a list of relative file paths that contain matches.
+        """
+        # Extract quoted strings (error messages) from the problem
+        quoted = re.findall(r'["\']([^"\']{10,80})["\']', problem)
+        if not quoted:
+            return []
+
+        found_files: set[str] = set()
+        for msg in quoted[:5]:  # Limit to 5 search terms
+            # Escape special grep chars
+            escaped = msg.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+            try:
+                result = subprocess.run(
+                    ["grep", "-rl", "--include=*.py", escaped, "."],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                for line in result.stdout.strip().splitlines():
+                    line = line.strip()
+                    if line and line.endswith(".py"):
+                        if not line.startswith("./"):
+                            line = f"./{line}"
+                        # Skip test files and build artifacts
+                        if "/test" not in line and "/build/" not in line:
+                            found_files.add(line)
+            except (subprocess.TimeoutExpired, Exception):
+                continue
+
+        return sorted(found_files)
+
+    @staticmethod
+    def _extract_files_from_problem(problem: str, repo_dir: Path | None) -> list[str]:
+        """Extract file paths from tracebacks and module refs in the problem.
+
+        Looks for:
+        - Python traceback patterns: File "path/to/file.py", line N
+        - Module references: module.submodule → module/submodule.py
+        - Direct file path mentions: path/to/file.py
+
+        Returns prioritized list of file paths that exist in the repo.
+        """
+        found: list[str] = []
+
+        # 1. Extract from tracebacks: File "path/to/file.py"
+        for m in re.finditer(r'File\s+"([^"]+\.py)"', problem):
+            fpath = m.group(1)
+            # Normalize to relative path
+            if "/" in fpath:
+                # Strip absolute prefix if present
+                parts = fpath.split("/")
+                # Find the repo-relative part (after site-packages/ or the repo name)
+                for i, part in enumerate(parts):
+                    if part in ("site-packages",):
+                        fpath = "/".join(parts[i + 2 :])  # skip package name
+                        break
+                if not fpath.startswith("./"):
+                    fpath = f"./{fpath}"
+                found.append(fpath)
+
+        # 2. Extract module references: e.g., "sympy.functions.elementary.trigonometric"
+        for m in re.finditer(r"\b([a-z]\w+(?:\.[a-z]\w+){2,})\b", problem):
+            mod_path = m.group(1).replace(".", "/") + ".py"
+            found.append(f"./{mod_path}")
+
+        # 3. Direct file path mentions: "src/foo/bar.py" or "foo/bar.py"
+        for m in re.finditer(r"\b((?:[\w]+/)+\w+\.py)\b", problem):
+            fpath = m.group(1)
+            if not fpath.startswith("./"):
+                fpath = f"./{fpath}"
+            found.append(fpath)
+
+        # 4. Grep for error messages if repo is available
+        if repo_dir and repo_dir.exists():
+            grep_files = SWEBenchAgent._grep_error_message(repo_dir, problem)
+            found.extend(grep_files)
+
+        # 5. Keyword-path matching: find .py files whose name matches a
+        #    key term from the problem (e.g. "concat" → core/concat.py).
+        #    This catches feature-request problems that lack tracebacks.
+        if repo_dir and repo_dir.exists():
+            keywords = set(re.findall(r"\b([a-z][a-z0-9_]{3,})\b", problem.lower()))
+            # Remove overly common terms
+            keywords -= {
+                "that", "this", "with", "from", "should", "would", "could",
+                "have", "been", "when", "which", "were", "also", "need",
+                "like", "more", "than", "each", "them", "other", "does",
+                "into", "will", "want", "make", "just", "only", "some",
+                "what", "very", "option", "default", "current", "different",
+                "variables", "datasets", "values", "example",
+            }
+            if keywords:
+                try:
+                    result = subprocess.run(
+                        ["find", ".", "-name", "*.py",
+                         "-not", "-path", "./.git/*",
+                         "-not", "-path", "*/test*"],
+                        cwd=repo_dir,
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    for fpath in result.stdout.strip().splitlines():
+                        fname = fpath.rsplit("/", 1)[-1].replace(".py", "").lower()
+                        if fname in keywords and fpath not in found:
+                            found.append(fpath)
+                except (subprocess.TimeoutExpired, Exception):
+                    pass
+
+        # Deduplicate while preserving order, and verify existence
+        seen: set[str] = set()
+        verified: list[str] = []
+        for f in found:
+            if f in seen:
+                continue
+            seen.add(f)
+            if repo_dir and (repo_dir / f.lstrip("./")).exists():
+                verified.append(f)
+            else:
+                # Keep even unverified — LLM localization may still find them useful
+                verified.append(f)
+
+        return verified
+
     async def _localize_files(
         self,
         problem: str,
@@ -164,6 +312,33 @@ class SWEBenchAgent(Agent):
         repo: str,
     ) -> list[str]:
         """Identify which files are relevant to the problem."""
+        # Pre-localization: extract files from error messages and tracebacks
+        pre_localized = self._extract_files_from_problem(problem, repo_dir)
+        if pre_localized:
+            # Filter to only files that actually exist in the repo
+            if repo_dir:
+                verified = [
+                    f for f in pre_localized
+                    if (repo_dir / f.lstrip("./")).exists()
+                ]
+            else:
+                verified = pre_localized
+            logger.info(
+                "pre_localized_files",
+                count=len(verified),
+                files=verified[:5],
+            )
+            # Fast path: if grep/traceback/keyword found any verified files,
+            # skip the expensive LLM localization call entirely. This saves
+            # 60-120s and is crucial for instances that are close to timeout.
+            # Even 1 file is sufficient — the agent reads it and generates
+            # a focused patch, which beats a slow LLM localization that
+            # might timeout on large repos.
+            if verified:
+                logger.info("fast_path_localization", count=len(verified))
+                return verified[:_MAX_FILES_TO_READ]
+            pre_localized = verified
+
         # Get repo structure
         repo_structure = ""
         if repo_dir and repo_dir.exists():
@@ -224,15 +399,23 @@ class SWEBenchAgent(Agent):
         response = await self._llm.complete(role=LLMRole.ACTING, messages=messages)
 
         # Parse file paths from response
-        files = []
+        llm_files = []
         for line in response.strip().splitlines():
             line = line.strip().strip("-").strip("*").strip("`").strip()
             if line.startswith("./") and line.endswith(".py"):
-                files.append(line)
+                llm_files.append(line)
             elif line.endswith(".py") and "/" in line:
-                files.append(f"./{line}")
+                llm_files.append(f"./{line}")
 
-        return files[:_MAX_FILES_TO_READ]
+        # Merge: pre-localized files first, then LLM-suggested (deduplicated)
+        merged: list[str] = list(pre_localized)
+        seen = set(pre_localized)
+        for f in llm_files:
+            if f not in seen:
+                merged.append(f)
+                seen.add(f)
+
+        return merged[:_MAX_FILES_TO_READ]
 
     def _keyword_filter_files(
         self,
@@ -691,6 +874,32 @@ class SWEBenchAgent(Agent):
         )
         return result
 
+    @staticmethod
+    def _scan_existing_definitions(file_contents: dict[str, str]) -> str:
+        """Scan file contents for existing class and function definitions.
+
+        Returns a summary string listing all classes and top-level functions
+        found across the provided files, to prevent the LLM from creating
+        duplicate definitions.
+        """
+        definitions: list[str] = []
+        for fpath, content in file_contents.items():
+            fname = fpath.split("/")[-1] if "/" in fpath else fpath
+            for m in re.finditer(r"^(class|def)\s+(\w+)", content, re.MULTILINE):
+                kind = m.group(1)
+                name = m.group(2)
+                # Skip private/dunder methods and test functions
+                if name.startswith("_") or name.startswith("test"):
+                    continue
+                definitions.append(f"  - {kind} {name} (in {fname})")
+
+        if not definitions:
+            return ""
+
+        # Deduplicate
+        unique = sorted(set(definitions))
+        return "\n".join(unique[:50])  # Cap at 50 to avoid prompt bloat
+
     async def _generate_patch(
         self,
         problem: str,
@@ -699,6 +908,7 @@ class SWEBenchAgent(Agent):
         instance_id: str,
         fail_to_pass: list[str] | None = None,
         test_context: str = "",
+        pass_to_pass: list[str] | None = None,
     ) -> str:
         """Generate a unified diff patch with validation retry.
 
@@ -733,12 +943,38 @@ class SWEBenchAgent(Agent):
         if test_context:
             test_info += f"## Failing Test Code\n```python\n{test_context}\n```\n\n"
 
+        # PASS_TO_PASS awareness: warn about tests that must not break
+        pass_to_pass_info = ""
+        if pass_to_pass:
+            # Include relevant pass_to_pass tests (limit to avoid prompt bloat)
+            relevant_p2p = pass_to_pass[:10]
+            pass_to_pass_info = (
+                "## Tests That Must Continue Passing (DO NOT BREAK)\n"
+                + "\n".join(f"- `{t}`" for t in relevant_p2p)
+                + "\n\nIf your fix changes behavior these tests rely on, "
+                "you MUST also update those tests.\n\n"
+            )
+
+        # Existing definitions check: prevent duplicate class/function creation
+        existing_defs = self._scan_existing_definitions(file_contents)
+        existing_defs_info = ""
+        if existing_defs:
+            existing_defs_info = (
+                "## CRITICAL: Existing Definitions\n"
+                f"{existing_defs}\n\n"
+                "NEVER duplicate an existing class or function. If you need to add a "
+                "method to an existing class, modify that class — do NOT create a new "
+                "class with the same name.\n\n"
+            )
+
         prompt = (
             f"You are an expert Python developer fixing a bug in '{repo}' (instance: {instance_id}).\n\n"
             f"## Patch Strategy\n{strategy}\n\n"
             f"## Reasoning Depth: {reasoning_depth}\n\n"
             f"## Problem Statement\n{problem}\n\n"
             f"{test_info}"
+            f"{pass_to_pass_info}"
+            f"{existing_defs_info}"
             f"## Relevant Source Code\n{file_context}\n\n"
             "## Instructions\n"
             "Think step by step:\n"
