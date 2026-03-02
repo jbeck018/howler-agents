@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,12 @@ _FOCUS_THRESHOLD = 5_000
 # Max validation-retry attempts for patch generation (Instructor-style feedback loop).
 # Each retry sends git-apply errors back to the LLM for corrective re-generation.
 _MAX_PATCH_RETRIES = 3
+# RLLM (Recursive LLM) self-critique → expand → re-generate loop.
+# Max iterations of the refinement cycle after the initial patch attempt.
+_MAX_RLLM_ITERATIONS = 2
+# Fraction of the instance timeout budget that must remain before starting
+# an RLLM iteration. Ensures we don't timeout mid-critique.
+_RLLM_TIME_BUDGET_FRACTION = 0.65
 
 
 class SWEBenchAgent(Agent):
@@ -103,6 +110,10 @@ class SWEBenchAgent(Agent):
         self.config.framework_config["_problem_text"] = problem + test_keywords
         # Store repo_dir for patch validation in _generate_patch
         self.config.framework_config["_repo_dir"] = repo_dir
+        # Pick up per-instance timeout budget for the RLLM time guard
+        self.config.framework_config["_instance_timeout_s"] = task.get(
+            "_instance_timeout_s", 300.0
+        )
 
         try:
             # Step 1: Localize files
@@ -132,7 +143,8 @@ class SWEBenchAgent(Agent):
                         f"Read {len(pass_to_pass_context)} chars of pass_to_pass test code"
                     )
 
-            # Step 3: Generate patch
+            # Step 3: Generate initial patch
+            task_start_time = time.monotonic()
             patch = await self._generate_patch(
                 problem,
                 file_contents,
@@ -150,6 +162,113 @@ class SWEBenchAgent(Agent):
                     output="",
                     key_decisions=[*decisions, "Failed to generate a patch"],
                     lessons_learned=["Need better localization or understanding"],
+                )
+
+            # Step 3b: RLLM refinement loop — self-critique → expand → re-generate
+            # Save the initial validated patch as fallback.  If re-generation
+            # produces a patch that fails git-apply, we revert to this one
+            # rather than shipping a broken diff (prevents regressions like
+            # django-11001 and apply failures like flask-4045 / sympy-11870).
+            best_patch = patch
+            instance_budget = self.config.framework_config.get(
+                "_instance_timeout_s", 300.0
+            )
+            for rllm_iter in range(_MAX_RLLM_ITERATIONS):
+                elapsed = time.monotonic() - task_start_time
+                if elapsed >= instance_budget * _RLLM_TIME_BUDGET_FRACTION:
+                    logger.info(
+                        "rllm_time_budget_exceeded",
+                        instance_id=instance_id,
+                        elapsed=round(elapsed, 1),
+                        budget=instance_budget,
+                        iteration=rllm_iter,
+                    )
+                    break
+                if not patch or not fail_to_pass:
+                    break
+
+                critique = await self._self_critique(
+                    patch, problem, fail_to_pass, file_contents, instance_id,
+                )
+                if critique["all_tests_covered"] and not critique["patch_too_complex"]:
+                    decisions.append(f"RLLM iter {rllm_iter}: critique satisfied")
+                    break
+
+                # Only re-generate when there are genuinely uncovered tests
+                # or the patch is flagged as too complex.  If the critique
+                # merely suggests a "different approach" but all tests are
+                # nominally covered, keep the existing patch.
+                if not critique["uncovered_tests"] and not critique["patch_too_complex"]:
+                    decisions.append(f"RLLM iter {rllm_iter}: no actionable feedback")
+                    break
+
+                decisions.append(
+                    f"RLLM iter {rllm_iter}: "
+                    f"uncovered={critique['uncovered_tests']}, "
+                    f"complex={critique['patch_too_complex']}"
+                )
+
+                # Expand context based on critique findings
+                expanded_contents = self._expand_context(
+                    critique, file_contents, repo_dir,
+                )
+
+                # Re-generate with RLLM-specific parameters
+                candidate = await self._generate_patch(
+                    problem,
+                    expanded_contents,
+                    repo,
+                    instance_id,
+                    fail_to_pass,
+                    test_context,
+                    pass_to_pass,
+                    uncovered_tests=critique["uncovered_tests"] or None,
+                    simplicity_mode=critique["patch_too_complex"],
+                )
+
+                # Validate the candidate — if it doesn't apply cleanly,
+                # fall back to the previous best patch.
+                if candidate and candidate.strip():
+                    apply_err = self._try_apply_patch(candidate, repo_dir)
+                    if apply_err is None:
+                        # New patch applies cleanly — adopt it
+                        patch = candidate
+                        best_patch = candidate
+                        decisions.append(
+                            f"RLLM iter {rllm_iter}: new patch validated"
+                        )
+                    else:
+                        # New patch fails to apply — keep the old one
+                        logger.info(
+                            "rllm_candidate_rejected",
+                            instance_id=instance_id,
+                            iteration=rllm_iter,
+                            error=apply_err[:200],
+                        )
+                        decisions.append(
+                            f"RLLM iter {rllm_iter}: candidate rejected "
+                            f"(apply error), keeping previous patch"
+                        )
+                        patch = best_patch
+                else:
+                    decisions.append(
+                        f"RLLM iter {rllm_iter}: empty candidate, keeping previous"
+                    )
+                    patch = best_patch
+
+                # Update file_contents for the next iteration
+                file_contents = expanded_contents
+
+            # Use the best validated patch
+            patch = best_patch
+
+            if not patch or patch.strip() == "":
+                return TaskResult(
+                    success=False,
+                    score=0.1,
+                    output="",
+                    key_decisions=[*decisions, "Failed to generate a patch after RLLM"],
+                    lessons_learned=["RLLM loop did not produce a viable patch"],
                 )
 
             # Step 4: Validate patch format
@@ -900,6 +1019,272 @@ class SWEBenchAgent(Agent):
         unique = sorted(set(definitions))
         return "\n".join(unique[:50])  # Cap at 50 to avoid prompt bloat
 
+    @staticmethod
+    def _parse_critique_response(text: str) -> dict[str, Any]:
+        """Parse structured KEY: value lines from a self-critique LLM response.
+
+        Expected keys (case-insensitive):
+          TESTS_COVERED: yes|no
+          UNCOVERED_TESTS: comma-separated test names (or "none")
+          MISSING_SITES: comma-separated method/class names needing changes
+          MISSING_FILES: comma-separated file paths
+          PATCH_TOO_COMPLEX: yes|no
+          SIMPLIFICATION_HINT: free text
+
+        Returns a dict with typed fields.  Defaults to ``all_tests_covered=True``
+        on garbled responses so the RLLM loop exits harmlessly.
+        """
+        result: dict[str, Any] = {
+            "all_tests_covered": True,
+            "uncovered_tests": [],
+            "missing_sites": [],
+            "missing_files": [],
+            "patch_too_complex": False,
+            "simplification_hint": "",
+        }
+
+        kv: dict[str, str] = {}
+        for line in text.splitlines():
+            m = re.match(r"^\s*([A-Z_]+)\s*:\s*(.+)$", line.strip())
+            if m:
+                kv[m.group(1).upper()] = m.group(2).strip()
+
+        def _split_list(val: str) -> list[str]:
+            items = [v.strip().strip("`") for v in val.split(",")]
+            return [i for i in items if i and i.lower() != "none"]
+
+        if "TESTS_COVERED" in kv:
+            result["all_tests_covered"] = kv["TESTS_COVERED"].lower().startswith("yes")
+        if "UNCOVERED_TESTS" in kv:
+            result["uncovered_tests"] = _split_list(kv["UNCOVERED_TESTS"])
+        if "MISSING_SITES" in kv:
+            result["missing_sites"] = _split_list(kv["MISSING_SITES"])
+        if "MISSING_FILES" in kv:
+            result["missing_files"] = _split_list(kv["MISSING_FILES"])
+        if "PATCH_TOO_COMPLEX" in kv:
+            result["patch_too_complex"] = kv["PATCH_TOO_COMPLEX"].lower().startswith("yes")
+        if "SIMPLIFICATION_HINT" in kv:
+            result["simplification_hint"] = kv["SIMPLIFICATION_HINT"]
+
+        # If uncovered_tests were reported, override all_tests_covered
+        if result["uncovered_tests"]:
+            result["all_tests_covered"] = False
+
+        return result
+
+    async def _self_critique(
+        self,
+        patch: str,
+        problem: str,
+        fail_to_pass: list[str],
+        file_contents: dict[str, str],
+        instance_id: str,
+    ) -> dict[str, Any]:
+        """Ask the LLM to critique its own patch against the failing tests.
+
+        Uses a lightweight context summary (definition list + file names) to
+        keep the prompt at ~2-3K chars for fast evaluation (~60-90s).
+        """
+        # Build a concise summary of what the patch modifies
+        patch_files: list[str] = []
+        for line in patch.splitlines():
+            if line.startswith("diff --git"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    patch_files.append(parts[3].lstrip("b/"))
+
+        # Existing definitions for context
+        defs_summary = self._scan_existing_definitions(file_contents)
+
+        test_list = "\n".join(f"  - {t}" for t in fail_to_pass) if fail_to_pass else "  (none)"
+
+        prompt = (
+            f"You are reviewing a patch for '{instance_id}'.\n\n"
+            f"## Problem Statement (summary)\n{problem[:1500]}\n\n"
+            f"## Failing Tests (must pass after fix)\n{test_list}\n\n"
+            f"## Files Modified by Patch\n"
+            + "\n".join(f"  - {f}" for f in patch_files)
+            + "\n\n"
+            f"## Known Definitions in Context\n{defs_summary or '(none)'}\n\n"
+            f"## The Patch\n```diff\n{patch[:3000]}\n```\n\n"
+            "## Task\n"
+            "For EACH failing test listed above:\n"
+            "1. Identify what the test asserts (return value, exception, behavior)\n"
+            "2. Trace the code path: test → function under test → the bug site\n"
+            "3. Check if the patch modifies that code path\n"
+            "4. If NOT, name the specific method/class/file that needs changing\n\n"
+            "IMPORTANT: A test is 'uncovered' ONLY if the patch does not modify "
+            "any code on the test's execution path. If the patch modifies the "
+            "right code path but uses a DIFFERENT approach than you would, that "
+            "still counts as covered. Do NOT flag tests as uncovered just because "
+            "you prefer a different fix strategy.\n\n"
+            "Also assess: is the patch over-engineered? If the fix adds >50 lines "
+            "when a 5-line removal/change would suffice, flag it.\n\n"
+            "Output EXACTLY these lines (one per line, nothing else):\n"
+            "TESTS_COVERED: yes OR no\n"
+            "UNCOVERED_TESTS: comma-separated test names, or none\n"
+            "MISSING_SITES: comma-separated method/class names needing changes, or none\n"
+            "MISSING_FILES: comma-separated file paths needing reading, or none\n"
+            "PATCH_TOO_COMPLEX: yes OR no\n"
+            "SIMPLIFICATION_HINT: one-sentence description of simpler approach, or none\n"
+        )
+
+        try:
+            response = await self._llm.complete(
+                role=LLMRole.REFLECTING,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            critique = self._parse_critique_response(response)
+            logger.info(
+                "rllm_critique",
+                instance_id=instance_id,
+                all_covered=critique["all_tests_covered"],
+                too_complex=critique["patch_too_complex"],
+                uncovered=critique["uncovered_tests"],
+                missing_sites=critique["missing_sites"],
+            )
+            return critique
+        except Exception as exc:
+            logger.warning("rllm_critique_error", instance_id=instance_id, error=str(exc))
+            # Safe default: assume satisfied so loop exits
+            return {
+                "all_tests_covered": True,
+                "uncovered_tests": [],
+                "missing_sites": [],
+                "missing_files": [],
+                "patch_too_complex": False,
+                "simplification_hint": "",
+            }
+
+    def _expand_context(
+        self,
+        critique: dict[str, Any],
+        file_contents: dict[str, str],
+        repo_dir: Path | None,
+    ) -> dict[str, str]:
+        """Expand file context based on self-critique findings.
+
+        Four sub-strategies applied in order:
+        A. Grep for missing method/class names
+        B. Read explicitly named missing files
+        C. Full-file class scan for class names in missing_sites
+        D. (reserved for future: call-site expansion)
+
+        Respects _MAX_FILE_CONTEXT budget and _MAX_PER_FILE per-file cap.
+        Returns a new file_contents dict with expanded entries.
+        """
+        expanded = dict(file_contents)
+        if not repo_dir or not repo_dir.exists():
+            return expanded
+
+        current_size = sum(len(v) for v in expanded.values())
+        budget = _MAX_FILE_CONTEXT - current_size
+
+        missing_sites: list[str] = critique.get("missing_sites", [])
+        missing_files: list[str] = critique.get("missing_files", [])
+
+        # A. Grep for missing method/class names
+        for name in missing_sites:
+            if budget <= 0:
+                break
+            try:
+                result = subprocess.run(
+                    ["grep", "-rn", "--include=*.py", f"def {name}\\|class {name}", "."],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                for line in result.stdout.strip().splitlines()[:5]:
+                    parts = line.split(":", 2)
+                    if len(parts) >= 2:
+                        fpath = parts[0]
+                        if not fpath.startswith("./"):
+                            fpath = f"./{fpath}"
+                        if fpath not in expanded and budget > 0:
+                            content = self._read_single_file(repo_dir, fpath, name)
+                            if content:
+                                expanded[fpath] = content[:_MAX_PER_FILE]
+                                budget -= len(expanded[fpath])
+            except (subprocess.TimeoutExpired, Exception):
+                continue
+
+        # B. Read explicitly named missing files
+        for fpath in missing_files:
+            if budget <= 0:
+                break
+            if not fpath.startswith("./"):
+                fpath = f"./{fpath}"
+            if fpath not in expanded:
+                content = self._read_single_file(repo_dir, fpath)
+                if content:
+                    expanded[fpath] = content[:_MAX_PER_FILE]
+                    budget -= len(expanded[fpath])
+
+        # C. Full-file class scan for class names in missing_sites
+        for name in missing_sites:
+            if budget <= 0:
+                break
+            try:
+                result = subprocess.run(
+                    ["grep", "-rn", "--include=*.py", f"^class {name}"],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                for line in result.stdout.strip().splitlines()[:3]:
+                    parts = line.split(":", 2)
+                    if len(parts) >= 2:
+                        fpath = parts[0]
+                        if not fpath.startswith("./"):
+                            fpath = f"./{fpath}"
+                        if fpath in expanded:
+                            # File already read — but check if the class definition
+                            # is in the extracted region. If not, re-read with the
+                            # class name as keyword for focused extraction.
+                            if f"class {name}" not in expanded[fpath]:
+                                content = self._read_single_file(repo_dir, fpath, name)
+                                if content and f"class {name}" in content:
+                                    # Append the new region (avoid duplication)
+                                    extra = content[:_MAX_PER_FILE]
+                                    expanded[fpath] = expanded[fpath] + "\n# ... (expanded) ...\n" + extra
+                                    budget -= len(extra)
+                        elif budget > 0:
+                            content = self._read_single_file(repo_dir, fpath, name)
+                            if content:
+                                expanded[fpath] = content[:_MAX_PER_FILE]
+                                budget -= len(expanded[fpath])
+            except (subprocess.TimeoutExpired, Exception):
+                continue
+
+        logger.info(
+            "rllm_expand_context",
+            original_files=len(file_contents),
+            expanded_files=len(expanded),
+            original_chars=sum(len(v) for v in file_contents.values()),
+            expanded_chars=sum(len(v) for v in expanded.values()),
+        )
+        return expanded
+
+    def _read_single_file(
+        self,
+        repo_dir: Path,
+        fpath: str,
+        keyword: str | None = None,
+    ) -> str:
+        """Read a single file from the repo, optionally with focused extraction."""
+        full_path = repo_dir / fpath.lstrip("./")
+        if not full_path.exists():
+            return ""
+        try:
+            text = full_path.read_text(errors="replace")
+            if len(text) > _FOCUS_THRESHOLD and keyword:
+                return self._focus_extract(text, {keyword}, fpath)
+            return text[:_MAX_PER_FILE]
+        except Exception:
+            return ""
+
     async def _generate_patch(
         self,
         problem: str,
@@ -909,12 +1294,21 @@ class SWEBenchAgent(Agent):
         fail_to_pass: list[str] | None = None,
         test_context: str = "",
         pass_to_pass: list[str] | None = None,
+        *,
+        uncovered_tests: list[str] | None = None,
+        simplicity_mode: bool = False,
     ) -> str:
         """Generate a unified diff patch with validation retry.
 
         Uses an Instructor-style feedback loop: if git apply --check fails,
         the error is fed back to the LLM for a corrective retry (up to
         _MAX_PATCH_RETRIES attempts).
+
+        RLLM-specific parameters (keyword-only):
+            uncovered_tests: Tests the previous patch missed — injected as a
+                "CRITICAL: Still-Uncovered Tests" section in the prompt.
+            simplicity_mode: When True, adds a "SIMPLICITY REQUIREMENT" section
+                instructing the LLM to prefer minimal removals over additions.
         """
         # Build file context with line numbers for accurate patch generation
         file_context = ""
@@ -955,6 +1349,36 @@ class SWEBenchAgent(Agent):
                 "you MUST also update those tests.\n\n"
             )
 
+        # RLLM: inject still-uncovered tests into the prompt on re-generation
+        uncovered_info = ""
+        if uncovered_tests:
+            uncovered_info = (
+                "## CRITICAL: Still-Uncovered Tests (from prior attempt)\n"
+                "Your previous patch did NOT address these tests. You MUST fix "
+                "the code paths they exercise:\n"
+                + "\n".join(f"- `{t}`" for t in uncovered_tests)
+                + "\n\n"
+                "IMPORTANT: Only modify files that your PREVIOUS patch already "
+                "touched. Additional source code in this prompt is for reading "
+                "context only — do NOT add new diff hunks for files you did not "
+                "previously edit. Adding hunks for new files (e.g. __init__.py "
+                "import lines) almost always fails due to context mismatch.\n\n"
+            )
+
+        # RLLM: simplicity mode for over-engineered patches
+        simplicity_info = ""
+        if simplicity_mode:
+            simplicity_info = (
+                "## SIMPLICITY REQUIREMENT\n"
+                "Your previous patch was over-engineered. This time:\n"
+                "- Prefer REMOVING or MODIFYING existing code over ADDING new code\n"
+                "- A 5-line deletion is better than a 50-line addition\n"
+                "- If a condition or check is wrong, fix or remove it — "
+                "do not add a new workaround layer\n"
+                "- The gold-standard fix for this type of issue is typically "
+                "under 20 lines of diff\n\n"
+            )
+
         # Existing definitions check: prevent duplicate class/function creation
         existing_defs = self._scan_existing_definitions(file_contents)
         existing_defs_info = ""
@@ -973,6 +1397,8 @@ class SWEBenchAgent(Agent):
             f"## Reasoning Depth: {reasoning_depth}\n\n"
             f"## Problem Statement\n{problem}\n\n"
             f"{test_info}"
+            f"{uncovered_info}"
+            f"{simplicity_info}"
             f"{pass_to_pass_info}"
             f"{existing_defs_info}"
             f"## Relevant Source Code\n{file_context}\n\n"

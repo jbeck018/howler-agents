@@ -1271,5 +1271,132 @@ def uninstall(keep_data: bool, remove_venv: bool, yes: bool) -> None:
     click.echo("\nDone! howler-agents has been removed from this repository.")
 
 
+# --------------------------------------------------------------------------- #
+# update                                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@cli.command("update")
+@click.option(
+    "--check",
+    "check_only",
+    is_flag=True,
+    default=False,
+    help="Only check for updates without installing.",
+)
+def update(check_only: bool) -> None:
+    """Update howler-agents to the latest version.
+
+    \b
+    Update to latest:
+        howler-agents update
+
+    \b
+    Check for available updates:
+        howler-agents update --check
+
+    \b
+    Via npx (recommended):
+        npx howler-agents update
+    """
+    import subprocess
+
+    from howler_agents import __version__
+
+    click.echo(f"howler-agents update (current: v{__version__})")
+
+    venv_dir = Path.home() / ".howler-agents" / "venv"
+    pkg = "howler-agents-core[mcp]"
+
+    # Determine installer: uv if available, otherwise pip from managed venv
+    has_uv = shutil.which("uv") is not None
+    if has_uv:
+        installer = "uv"
+    elif venv_dir.is_dir():
+        pip_bin = (
+            venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "pip"
+        )
+        if pip_bin.exists():
+            installer = str(pip_bin)
+        else:
+            installer = "pip"
+    else:
+        installer = "pip"
+
+    if check_only:
+        click.echo("  Checking PyPI for latest version...")
+        try:
+            if installer == "uv":
+                result = subprocess.run(
+                    ["uv", "pip", "show", "howler-agents-core"],
+                    capture_output=True, text=True, timeout=15,
+                )
+            else:
+                result = subprocess.run(
+                    [installer, "show", "howler-agents-core"],
+                    capture_output=True, text=True, timeout=15,
+                )
+            installed = "unknown"
+            for line in result.stdout.splitlines():
+                if line.lower().startswith("version:"):
+                    installed = line.split(":", 1)[1].strip()
+            click.echo(f"  Installed: v{installed}")
+            # Check PyPI for latest
+            result2 = subprocess.run(
+                [
+                    sys.executable, "-c",
+                    "import json, urllib.request; "
+                    "r = urllib.request.urlopen('https://pypi.org/pypi/howler-agents-core/json', timeout=10); "
+                    "print(json.loads(r.read())['info']['version'])",
+                ],
+                capture_output=True, text=True, timeout=15,
+            )
+            latest = result2.stdout.strip() or "unknown"
+            click.echo(f"  Latest:    v{latest}")
+            if latest != "unknown" and installed != "unknown" and latest != installed:
+                click.echo("\n  Update available! Run: howler-agents update")
+            elif latest == installed:
+                click.echo("\n  Already up to date.")
+        except Exception as exc:
+            click.echo(f"  Could not check for updates: {exc}", err=True)
+        return
+
+    click.echo(f"  Upgrading via {installer}...")
+    try:
+        if installer == "uv":
+            cmd = ["uv", "pip", "install", "--upgrade", pkg]
+            if venv_dir.is_dir():
+                cmd = ["uv", "pip", "install", "--upgrade", "--python", str(venv_dir), pkg]
+            subprocess.run(cmd, check=True, timeout=120)
+        else:
+            subprocess.run(
+                [installer, "install", "--upgrade", pkg],
+                check=True, timeout=120,
+            )
+    except subprocess.CalledProcessError as exc:
+        click.echo(f"  Upgrade failed (exit {exc.returncode}). Try manually:", err=True)
+        click.echo(f'    uv pip install --upgrade "{pkg}"')
+        click.echo(f'    pip install --upgrade "{pkg}"')
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        click.echo("  Upgrade timed out after 120s.", err=True)
+        sys.exit(1)
+
+    # Show new version
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", "from howler_agents import __version__; print(__version__)"],
+            capture_output=True, text=True, timeout=10,
+        )
+        new_version = result.stdout.strip() or "unknown"
+    except Exception:
+        new_version = "unknown"
+
+    if new_version != __version__:
+        click.echo(f"\n  Updated: v{__version__} -> v{new_version}")
+    else:
+        click.echo(f"\n  Already at latest version (v{__version__}).")
+
+
 if __name__ == "__main__":
     cli()

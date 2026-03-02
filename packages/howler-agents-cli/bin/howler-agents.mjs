@@ -145,6 +145,37 @@ function installPython() {
   process.exit(1);
 }
 
+/**
+ * Upgrade the Python package in the managed venv.
+ */
+function upgradePython() {
+  if (commandExists("uv")) {
+    if (existsSync(VENV_DIR)) {
+      execSync(`uv pip install --upgrade --python "${VENV_DIR}" "${PYTHON_PACKAGE}"`, {
+        stdio: "inherit",
+      });
+    } else {
+      execSync(`uv pip install --upgrade "${PYTHON_PACKAGE}"`, {
+        stdio: "inherit",
+      });
+    }
+  } else {
+    const pip =
+      process.platform === "win32"
+        ? join(VENV_DIR, "Scripts", "pip")
+        : join(VENV_DIR, "bin", "pip");
+    if (existsSync(pip)) {
+      execSync(`"${pip}" install --upgrade "${PYTHON_PACKAGE}"`, {
+        stdio: "inherit",
+      });
+    } else {
+      execSync(`pip install --upgrade "${PYTHON_PACKAGE}"`, {
+        stdio: "inherit",
+      });
+    }
+  }
+}
+
 // --- Main ---
 
 const args = process.argv.slice(2);
@@ -156,23 +187,51 @@ if (args.length === 1 && args[0] === "--npm-version") {
   process.exit(0);
 }
 
-// Find or install the Python CLI
-let command = isInstalled();
-if (!command) {
-  command = installPython();
+// Special command: update — upgrade both npm wrapper and Python package
+if (args.length >= 1 && args[0] === "update" && !args.includes("--help")) {
+  const checkOnly = args.includes("--check");
+  process.stderr.write("howler-agents: Checking for updates...\n");
+
+  if (!checkOnly) {
+    // 1. Upgrade the Python package
+    try {
+      process.stderr.write("howler-agents: Upgrading Python package...\n");
+      upgradePython();
+    } catch (err) {
+      process.stderr.write(`howler-agents: Python upgrade failed: ${err.message}\n`);
+    }
+  }
+
+  // 2. Proxy to the Python CLI for version display / check logic
+  let command = isInstalled();
+  if (!command) {
+    command = installPython();
+  }
+  const child = spawn(command, args, { stdio: "inherit", env: process.env });
+  child.on("close", (code) => process.exit(code ?? 0));
+  child.on("error", (err) => {
+    process.stderr.write(`howler-agents: ${err.message}\n`);
+    process.exit(1);
+  });
+} else {
+  // Find or install the Python CLI
+  let command = isInstalled();
+  if (!command) {
+    command = installPython();
+  }
+
+  // Proxy all arguments to the Python CLI
+  const child = spawn(command, args, {
+    stdio: "inherit",
+    env: process.env,
+  });
+
+  child.on("error", (err) => {
+    process.stderr.write(`howler-agents: Failed to start: ${err.message}\n`);
+    process.exit(1);
+  });
+
+  child.on("close", (code) => {
+    process.exit(code ?? 0);
+  });
 }
-
-// Proxy all arguments to the Python CLI
-const child = spawn(command, args, {
-  stdio: "inherit",
-  env: process.env,
-});
-
-child.on("error", (err) => {
-  process.stderr.write(`howler-agents: Failed to start: ${err.message}\n`);
-  process.exit(1);
-});
-
-child.on("close", (code) => {
-  process.exit(code ?? 0);
-});

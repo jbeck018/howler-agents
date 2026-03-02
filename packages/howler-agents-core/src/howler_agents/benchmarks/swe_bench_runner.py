@@ -705,6 +705,9 @@ class SWEBenchEvalRunner:
                     # Include pass_to_pass test names for regression awareness
                     if instance.pass_to_pass:
                         task["pass_to_pass"] = instance.pass_to_pass
+                    # Pass timeout budget so the agent's RLLM loop can
+                    # guard against exceeding the per-instance time limit.
+                    task["_instance_timeout_s"] = instance_timeout
 
                     if voting_enabled:
                         # Run all ensemble agents concurrently on this instance
